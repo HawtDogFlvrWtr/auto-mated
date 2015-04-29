@@ -16,9 +16,25 @@ if [ $connectDevices != 1 ]; then
 			echo "Nothing found.. sleeping and trying again"
 			sleep 1
 		else
-			echo "Found OBDLink Device with Mac: "$findDevice" adding it to rfcomm.conf"
+			echo "Found OBDLink Device with Mac: "$findDevice".. Attempting to add and connect with rfcomm"
+			# Connect to the device without interaction, via bt-device
 			yes 'yes' | bt-device --connect=$findDevice
-			rfcomm connect /dev/rfcomm0 $findDevice 1 &
+			connectDevices=$(bt-device -l | grep -c OBDLink)
+			# Check if we successfully paired to the device without interaction
+			if [ $connectDevices != 0 ]; then
+				rfcomm connect /dev/rfcomm0 $findDevice 1 &
+				sleep 10
+				# Checking if we successfully connected via rfcomm
+				rfcommConfirm=$(rfcomm -a | grep -c $deviceMac)
+				if [ "$rfcommConfirm" != "" ]; then
+					echo "Successfully connected via RFCOMM"
+				else
+					echo "Failed to connect via RFCOMM. Please restart and try again"
+				fi
+			else
+				echo "Failed to add the device. Please restart and try again."
+			fi
+			
 		fi
 		connectDevices=$(bt-device -l | grep -c OBDLink)
 	done
