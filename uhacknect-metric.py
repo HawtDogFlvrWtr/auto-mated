@@ -40,7 +40,7 @@ while not connection.is_connected():
     print "No valid device found. Please ensure ELM327 is on and connected. Looping with 5 seconds pause"
     connection = obd.Async('/dev/pts/14')
     time.sleep(5)
-print "Connected to device successfully"
+print "Connected to "+connection.get_port_name()+" successfully"
 #supported = connection.supported_commands
 #print supported
 connection.watch(obd.commands.RPM)
