@@ -33,12 +33,12 @@ def loopMetrics():
         time.sleep(5)
 
 # Auto connect to obd device
-connection = obd.Async('/dev/pts/14')
+connection = obd.Async()
 
 # Check if connected and continue, else loop
 while not connection.is_connected():
     print "No valid device found. Please ensure ELM327 is on and connected. Looping with 5 seconds pause"
-    connection = obd.Async('/dev/pts/14')
+    connection = obd.Async()
     time.sleep(5)
 print "Connected to "+connection.get_port_name()+" successfully"
 #supported = connection.supported_commands
