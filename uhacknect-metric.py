@@ -30,6 +30,7 @@ def loopMetrics():
 #        print "values List: "+valuesList
         output = urllib2.urlopen(mainHost+metricsList+"&values="+valuesList).read()
         print output
+        time.sleep(5)
 
 # Auto connect to obd device
 connection = obd.Async('/dev/pts/14')
