@@ -7,7 +7,7 @@
 #
 #
 
-connectDevices=$(bt-device -l | grep -c OBDLink)
+connectDevices=$(/usr/bin/bluez-test-device list | grep -c OBDLink)
 if [ $connectDevices != 1 ]; then
 	logger No OBDLink device connected... trying to find it and add it...
 	while [ $connectDevices != 1 ]; do
@@ -19,7 +19,7 @@ if [ $connectDevices != 1 ]; then
 			logger Found OBDLink Device with Mac: "$findDevice".. Attempting to add and connect with rfcomm
 			# Connect to the device without interaction, via bt-device
 			yes 'yes' | bt-device --connect=$findDevice
-			connectDevices=$(bt-device -l | grep -c OBDLink)
+			connectDevices=$(/usr/bin/bluez-test-device list | grep -c OBDLink)
 			# Check if we successfully paired to the device without interaction
 			if [ $connectDevices != 0 ]; then
 				rfcomm connect /dev/rfcomm0 $findDevice 1 &
@@ -36,7 +36,7 @@ if [ $connectDevices != 1 ]; then
 			fi
 			
 		fi
-		connectDevices=$(bt-device -l | grep -c OBDLink)
+		connectDevices=$(/usr/bin/bluez-test-device list | grep -c OBDLink)
 	done
 else
 	logger OBDLink device is already added... Checking if we\'re connected...
