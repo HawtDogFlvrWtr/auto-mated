@@ -64,9 +64,9 @@ def kickOff():
     while checkEngineOn.value is None:
         syslog.syslog('Engine is not started. Looping until the vehicle is turned on.')
         time.sleep(5)
-    print "Engine is started.. doing my thing!"
+     syslog.syslog('Engine is started.. doing my thing!')
     try:
         loopMetrics(connection)
     except:
-        print "Caught It"
+        syslog.syslog('Caught escape key... exiting')
 kickOff()
