@@ -42,6 +42,13 @@ def loopMetrics(connection):
         syslog.syslog('Influxdb Web Return: '+output)
         time.sleep(5)
 
+def checkCodes():
+    syslog.syslog('Checking engine for error codes...')
+    connection.watch(obd.commands.GET_DTC)
+    connectoin.start()
+    connection.stop()
+    errorCodes = connection.query(obd.commands.GET_DTC)
+    print errorCodes
 
 def kickOff():
     # Auto connect to obd device
@@ -53,8 +60,6 @@ def kickOff():
         connection = obd.Async()
         time.sleep(5)
     syslog.syslog('Connected to '+connection.get_port_name()+'successfully')
-    #supported = connection.supported_commands
-    #print supported
     connection.watch(obd.commands.RPM)
     connection.start()
     connection.stop()
@@ -64,7 +69,9 @@ def kickOff():
     while checkEngineOn.value is None:
         syslog.syslog('Engine is not started. Looping until the vehicle is turned on.')
         time.sleep(5)
-     syslog.syslog('Engine is started.. doing my thing!')
+    syslog.syslog('Engine is started..')
+    checkCodes()
+ 
     try:
         loopMetrics(connection)
     except:
