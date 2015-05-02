@@ -8,11 +8,12 @@
 import obd
 import time
 import urllib2
+import syslog
 
 #obd.debug.console = True
 
 def loopMetrics(connection):
-    metricsArray = ["RPM","SPEED","TIMING_ADVANCE","INTAKE_TEMP","THROTTLE_POS","MAF","RUN_TIME","FUEL_LEVEL"]
+    metricsArray = ["RPM","SPEED","TIMING_ADVANCE","INTAKE_TEMP","THROTTLE_POS","MAF","RUN_TIME","FUEL_LEVEL","COOLANT_TEMP","ENGINE_LOAD","FUEL_PRESSURE","INTAKE_PRESSURE","AMBIANT_AIR_TEMP","OIL_TEMP","FUEL_RATE"]
     metricsList = ','.join([str(x) for x in metricsArray])
     while 1:
         tempValues = []
@@ -23,33 +24,35 @@ def loopMetrics(connection):
             connection.start()
             connection.stop()
             value = connection.query(obd.commands[metrics])
+            # Dump if RPM is none
+            if metrics == 'RPM' and value.value is None:
+                connection.unwatch_all()
+                kickOff()
             tempValues.append(value.value)
         mainHost = "http://www.uhacknect.com/api/influxPush.php?vin=3C4PDCGG4FT641185&api=6054-4220-2524-3963&metric="
         valuesList = ','.join([str(x) for x in tempValues])
         # Check if we've been disconnected
-        if all(x is None for x in valuesList):
-            connection.unwatch_all()
-            kickOff()
-        print "metrics List: "+metricsList
-        print "values List: "+valuesList
+        syslog.syslog('Influx Metrics List: '+metricsList)
+        syslog.syslog('Influx Values List: '+valuesList)
         # Attempt to push, loop over if no network connection
         try:
             output = urllib2.urlopen(mainHost+metricsList+"&values="+valuesList).read()
         except:
             loopMetrics(connection)
-        print output
-    time.sleep(5)
+        syslog.syslog('Influxdb Web Return: '+output)
+        time.sleep(5)
 
 
 def kickOff():
     # Auto connect to obd device
-    connection = obd.Async()
+    syslog.syslog('Testing dev interface before real interface')
+    connection = obd.Async('/dev/pts/14')
     # Check if connected and continue, else loop
     while not connection.is_connected():
-        print "No valid device found. Please ensure ELM327 is on and connected. Looping with 5 seconds pause"
-        connection = obd.Async('/dev/pts/14')
+        syslog.syslog('No valid device found. Please ensure ELM327 is on and connected. Looping with 5 seconds pause')
+        connection = obd.Async()
         time.sleep(5)
-    print "Connected to "+connection.get_port_name()+" successfully"
+    syslog.syslog('Connected to '+connection.get_port_name()+'successfully')
     #supported = connection.supported_commands
     #print supported
     connection.watch(obd.commands.RPM)
@@ -59,7 +62,7 @@ def kickOff():
     # Once connected, check if engine is running
     checkEngineOn = connection.query(obd.commands.RPM)
     while checkEngineOn.value is None:
-        print "Engine is not started. Looping until the vehicle is turned on."
+        syslog.syslog('Engine is not started. Looping until the vehicle is turned on.')
         time.sleep(5)
     print "Engine is started.. doing my thing!"
     try:
