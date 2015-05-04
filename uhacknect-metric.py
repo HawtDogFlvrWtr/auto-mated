@@ -84,11 +84,14 @@ def checkEngineOn(connection):
         mainLoop(connection)
     except:
         syslog.syslog('Caught escape key... exiting')
+        valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
+        # Push empty values so that gauges reset back to zero on uhacknect.com
+        pushInflux(mainHost, metricsList, valuesList, connection)
 
 def kickOff():
     # Auto connect to obd device
     syslog.syslog('Testing dev interface before real interface')
-    connection = obd.Async('/dev/pts/2')
+    connection = obd.Async('/dev/pts/0')
     # Check if connected and continue, else loop
     while not connection.is_connected():
         syslog.syslog('No valid device found. Please ensure ELM327 is on and connected. Looping with 5 seconds pause')
