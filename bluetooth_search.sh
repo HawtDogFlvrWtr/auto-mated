@@ -18,7 +18,7 @@ if [ $connectDevices != 1 ]; then
 		else
 			logger Found OBDLink Device with Mac: "$findDevice".. Attempting to add and connect with rfcomm
 			# Connect to the device without interaction, via bt-device
-			yes 'yes' | bt-device --connect=$findDevice
+			yes 'yes' | /usr/bin/bluez-test-device create $findDevice
 			connectDevices=$(/usr/bin/bluez-test-device list | grep -c OBDLink)
 			# Check if we successfully paired to the device without interaction
 			if [ $connectDevices != 0 ]; then
