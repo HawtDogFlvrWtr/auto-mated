@@ -9,8 +9,36 @@ import obd
 import time
 import urllib2
 import syslog
+import ConfigParser
+import os.path
+import string
+import random
 
 #obd.debug.console = True
+# Checking if a config file exists, if it doesn't, then create one and fill it.
+configFile = '/etc/uhacknect.conf'
+if os.path.isfile(configFile):
+    Config = ConfigParser.ConfigParser()
+    Config.read(configFile)
+    vehicleKey = Config.get('config', 'vehiclekey')
+else:
+    syslog.syslog('First startup... generating config file')
+    vehicleKey = ''.join(random.SystemRandom().choice(string.uppercase + string.digits) for _ in xrange(10))
+    cfgFile = open(configFile,'w')
+    Config = ConfigParser.ConfigParser()
+    Config.read(configFile)
+    Config.add_section('config')
+    Config.set('config','vehiclekey',vehicleKey)
+    try:
+        Config.write(cfgFile)
+    except:
+        syslog.syslog("Failed writing config to "+configFile+".")
+    cfgFile.close()
+
+mainHost = "http://www.uhacknect.com/api/influxPush.php?key="+vehicleKey+"&metric="
+metricsArray = ["RPM","SPEED","TIMING_ADVANCE","INTAKE_TEMP","THROTTLE_POS","MAF","RUN_TIME","FUEL_LEVEL","COOLANT_TEMP","ENGINE_LOAD","FUEL_PRESSURE","INTAKE_PRESSURE","AMBIANT_AIR_TEMP","OIL_TEMP","FUEL_RATE"]
+metricsList = ','.join([str(x) for x in metricsArray])
+
 
 def obdQuery(connection,metric):
     connection.watch(obd.commands[metric])
@@ -31,8 +59,6 @@ def pushInflux(mainHost, metricsList, valuesList, connection):
 
 def mainLoop(connection):
     # FIX: NEED TO MAKE THIS HIS 01 TO DETERMINE SUPPORTED PID'S
-    metricsArray = ["RPM","SPEED","TIMING_ADVANCE","INTAKE_TEMP","THROTTLE_POS","MAF","RUN_TIME","FUEL_LEVEL","COOLANT_TEMP","ENGINE_LOAD","FUEL_PRESSURE","INTAKE_PRESSURE","AMBIANT_AIR_TEMP","OIL_TEMP","FUEL_RATE"]
-    metricsList = ','.join([str(x) for x in metricsArray])
     while 1:
         tempValues = []
         for metrics in metricsArray:
@@ -47,7 +73,6 @@ def mainLoop(connection):
                 # Push empty values so that gauges reset back to zero on uhacknect.com
                 pushInflux(mainHost, metricsList, valuesList, connection)
             tempValues.append(value.value)
-        mainHost = "http://www.uhacknect.com/api/influxPush.php?vin=3C4PDCGG4FT641185&api=6054-4220-2524-3963&metric="
         valuesList = ','.join([str(x) for x in tempValues])
         # Check if we've been disconnected
         syslog.syslog('Influx Metrics List: '+metricsList)
@@ -88,6 +113,9 @@ def checkEngineOn(connection):
         # Push empty values so that gauges reset back to zero on uhacknect.com
         pushInflux(mainHost, metricsList, valuesList, connection)
 
+def getActions():
+    print "Test"
+
 def kickOff():
     # Auto connect to obd device
     syslog.syslog('Testing dev interface before real interface')
@@ -103,3 +131,4 @@ def kickOff():
     checkEngineOn(connection)
 
 kickOff()
+
