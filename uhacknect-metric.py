@@ -68,10 +68,10 @@ def mainLoop(connection):
             # Dump if RPM is none
             if metrics == 'RPM' and value.value is None:
                 connection.unwatch_all()
-                checkEngineOn(connection)
                 valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
                 # Push empty values so that gauges reset back to zero on uhacknect.com
                 pushInflux(mainHost, metricsList, valuesList, connection)
+                checkEngineOn(connection)
             tempValues.append(value.value)
         valuesList = ','.join([str(x) for x in tempValues])
         # Check if we've been disconnected
