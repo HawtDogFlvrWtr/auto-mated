@@ -68,7 +68,7 @@ def mainLoop(connection):
             # Dump if RPM is none
             if metrics == 'RPM' and value.value is None:
                 connection.unwatch_all()
-                valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
+                valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
                 # Push empty values so that gauges reset back to zero on uhacknect.com
                 pushInflux(mainHost, metricsList, valuesList, connection)
                 checkEngineOn(connection)
@@ -109,7 +109,7 @@ def checkEngineOn(connection):
         mainLoop(connection)
     except:
         syslog.syslog('Caught escape key... exiting')
-        valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
+        valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
         # Push empty values so that gauges reset back to zero on uhacknect.com
         pushInflux(mainHost, metricsList, valuesList, connection)
 
