@@ -13,6 +13,7 @@ import ConfigParser
 import os.path
 import string
 import random
+import json
 
 #obd.debug.console = True
 # Checking if a config file exists, if it doesn't, then create one and fill it.
@@ -114,7 +115,23 @@ def checkEngineOn(connection):
         pushInflux(mainHost, metricsList, valuesList, connection)
 
 def getActions():
-    print "Test"
+    actionURL = "http://www.uhacknect.com/api/actionPull.php?key="+vehicleKey
+    # Attempt to push, loop over if no network connection
+    try:
+        actionOutput = urllib2.urlopen(actionURL).read()
+        data = json.loads(actionOutput)
+        for actions in data:
+            if actions['action'] == 'start':
+                print 'Starting: '+actions['action']
+            elif actions['action'] == 'stop':
+                print 'Stopping: '+actions['action']
+            elif actions['action'] == 'unlock':
+                print 'Unlocking: '+actions['action']
+            elif actions['action'] == 'lock':
+                print 'Locking: '+actions['action']
+    except:
+        print 'download failed'
+	
 
 def kickOff():
     # Auto connect to obd device
@@ -125,6 +142,7 @@ def kickOff():
         syslog.syslog('No valid device found. Please ensure ELM327 is on and connected. Looping with 5 seconds pause')
         connection = obd.Async()
         time.sleep(5)
+        getActions()
     syslog.syslog('Connected to '+connection.get_port_name()+' successfully')
     getVehicleInfo(connection)
     checkCodes(connection)
