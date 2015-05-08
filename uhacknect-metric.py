@@ -59,7 +59,7 @@ def pushInflux(mainHost, metricsList, valuesList, connection):
     time.sleep(5)
     
 
-def mainLoop(connection):
+def mainLoop(connection,portName):
     # FIX: NEED TO MAKE THIS HIS 01 TO DETERMINE SUPPORTED PID'S
     while 1:
         tempValues = []
@@ -75,8 +75,8 @@ def mainLoop(connection):
                 pushInflux(mainHost, metricsList, valuesList, connection)
                 checkEngineOn(connection)
             tempValues.append(value.value)
+        getActions(connection,portName,'on')
         valuesList = ','.join([str(x) for x in tempValues])
-        # Check if we've been disconnected
         syslog.syslog('Influx Metrics List: '+metricsList)
         syslog.syslog('Influx Values List: '+valuesList)
         pushInflux(mainHost, metricsList, valuesList, connection)
@@ -105,11 +105,11 @@ def checkEngineOn(connection,portName):
         time.sleep(5)
         obdQuery(connection,'RPM')
         checkEngineOn = connection.query(obd.commands.RPM)
-        getActions(connection,portName)
+        getActions(connection,portName,'off')
     syslog.syslog('Engine is started..')
  
     try:
-        mainLoop(connection)
+        mainLoop(connection,portName)
     except:
         syslog.syslog('Caught escape key... exiting')
         valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
@@ -129,17 +129,17 @@ def pushAction(action,portName):
     s.write(action)
     s.close()
     
-def getActions(connection,portName):
+def getActions(connection,portName,engineStatus):
     actionURL = "http://www.uhacknect.com/api/actionPull.php?key="+vehicleKey
     # Attempt to push, loop over if no network connection
     try:
         actionOutput = urllib2.urlopen(actionURL).read()
         data = json.loads(actionOutput)
         for actions in data:
-            if actions['action'] == 'start':
+            if actions['action'] == 'start' and engineStatus == 'off' :
                 syslog.syslog('Remote action found... Starting vehicle')
                 pushAction('69AA37901100\r\n',portName)
-            elif actions['action'] == 'stop':
+            elif actions['action'] == 'stop' and engineStatus == 'on' :
                 syslog.syslog('Remote action found... Stopping vehicle')
                 pushAction('6AAA37901100\r\n',portName)
             elif actions['action'] == 'unlock':
