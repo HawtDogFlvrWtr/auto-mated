@@ -14,6 +14,7 @@ import os.path
 import string
 import random
 import json
+import serial
 
 #obd.debug.console = True
 # Checking if a config file exists, if it doesn't, then create one and fill it.
@@ -95,7 +96,7 @@ def getVehicleInfo(connection):
     vinNum = connection.query(obd.commands.GET_VIN)
     print vinNum
 
-def checkEngineOn(connection):
+def checkEngineOn(connection,portName):
     # Once connected, check if engine is running
     obdQuery(connection,'RPM')
     checkEngineOn = connection.query(obd.commands.RPM)
@@ -104,6 +105,7 @@ def checkEngineOn(connection):
         time.sleep(5)
         obdQuery(connection,'RPM')
         checkEngineOn = connection.query(obd.commands.RPM)
+        getActions(connection,portName)
     syslog.syslog('Engine is started..')
  
     try:
@@ -114,7 +116,20 @@ def checkEngineOn(connection):
         # Push empty values so that gauges reset back to zero on uhacknect.com
         pushInflux(mainHost, metricsList, valuesList, connection)
 
-def getActions():
+def pushAction(action,portName):
+    s = serial.Serial( portName, baudrate=38400 )
+    s.write('STP31\r\n')
+    s.write('ATSH1C0\r\n')
+    s.write('STP31\r\n')
+    s.write('ATSH1C0\r\n')
+    s.write('STP31\r\n')
+    s.write('ATSH1C0\r\n')
+    s.write('STP31\r\n')
+    s.write('ATSH1C0\r\n')
+    s.write(action)
+    s.close()
+    
+def getActions(connection,portName):
     actionURL = "http://www.uhacknect.com/api/actionPull.php?key="+vehicleKey
     # Attempt to push, loop over if no network connection
     try:
@@ -122,31 +137,35 @@ def getActions():
         data = json.loads(actionOutput)
         for actions in data:
             if actions['action'] == 'start':
-                print 'Starting: '+actions['action']
+                syslog.syslog('Remote action found... Starting vehicle')
+                pushAction('69AA37901100\r\n',portName)
             elif actions['action'] == 'stop':
-                print 'Stopping: '+actions['action']
+                syslog.syslog('Remote action found... Stopping vehicle')
+                pushAction('6AAA37901100\r\n',portName)
             elif actions['action'] == 'unlock':
-                print 'Unlocking: '+actions['action']
+                syslog.syslog('Remote action found... Unlocking vehicle')
+                pushAction('24746C901100\r\n',portName)
             elif actions['action'] == 'lock':
-                print 'Locking: '+actions['action']
+                syslog.syslog('Remote action found... Locking vehicle')
+                pushAction('21746C901100\r\n',portName)
     except:
-        print 'download failed'
+        syslog.syslog('Something failed in actions... will try again in a bit')
 	
 
 def kickOff():
     # Auto connect to obd device
     syslog.syslog('Testing dev interface before real interface')
-    connection = obd.Async('/dev/pts/0')
+    connection = obd.Async()
     # Check if connected and continue, else loop
     while not connection.is_connected():
         syslog.syslog('No valid device found. Please ensure ELM327 is on and connected. Looping with 5 seconds pause')
         connection = obd.Async()
         time.sleep(5)
-        getActions()
+    portName = connection.get_port_name()
     syslog.syslog('Connected to '+connection.get_port_name()+' successfully')
     getVehicleInfo(connection)
     checkCodes(connection)
-    checkEngineOn(connection)
+    checkEngineOn(connection,portName) 
 
 kickOff()
 
