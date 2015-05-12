@@ -5,8 +5,12 @@
 # Created by Christopher Phipps HawtDogFlvrWtr@gmail.com
 # Apr 28th 2014
 #
-#
 
+process=$(/bin/ps -ef | /bin/grep -c bluetooth_search.sh)
+if [[ $process -gt 3 ]]; then
+        logger Instance already running.. exiting... 
+	exit 0
+fi
 connectDevices=$(/usr/bin/bluez-test-device list | grep -c OBDLink)
 if [ $connectDevices != 1 ]; then
 	logger No OBDLink device connected... trying to find it and add it...
