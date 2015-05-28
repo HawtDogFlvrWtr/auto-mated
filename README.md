@@ -2,12 +2,15 @@
 An alternative to Dodges uconnect access, for us folks with remote start on our vehicle but no unconnect access capabilities in our headunits. We'll be able to remotely start/stop/unlock/lock and hopefully much, more from the web. This was tested on Ubuntu 14.04
 
 # Requirements
-*  ObdLink LX
+*  ObdLink LX (Hardware)
+*  Raspberry Pi b+/2
 *  python 2+
 *  pybluez - https://github.com/karulis/pybluez
 *  rfcomm
 *  python-dev
 *  libbluetooth-dev
+*  Wifi adapter for pi
+*  Bluetooth adapter (2.1+)
 
 # How-To
 1.  Install python, python-dev, libbluetooth-dev
