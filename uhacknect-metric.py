@@ -43,7 +43,7 @@ metricsList = ','.join([str(x) for x in metricsArray])
 
 
 def obdQuery(connection,metric):
-    connection.watch(obd.commands[metric],force=True)
+    connection.watch(obd.commands[metric])
     connection.start()
     connection.stop()
     
@@ -115,6 +115,8 @@ def checkEngineOn(connection,portName):
         valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
         # Push empty values so that gauges reset back to zero on uhacknect.com
         pushInflux(mainHost, metricsList, valuesList, connection)
+        # Engine has been shut off, start over and wait for commands and for engine start.
+        kickOff()
 
 def pushAction(action,portName):
     s = serial.Serial( portName, baudrate=38400 )
