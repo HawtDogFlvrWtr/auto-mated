@@ -42,37 +42,37 @@ metricsArray = ["RPM","SPEED","TIMING_ADVANCE","INTAKE_TEMP","THROTTLE_POS","MAF
 metricsList = ','.join([str(x) for x in metricsArray])
 
 
-def obdQuery(connection,metric):
-    connection.watch(obd.commands[metric])
-    connection.start()
-    connection.stop()
-    
+def obdWatch(connection,metric):
+    connection.watch(obd.commands[metric]) #loop through each 
 
 def pushInflux(mainHost, metricsList, valuesList, connection):
     # Attempt to push, loop over if no network connection
     try:
         output = urllib2.urlopen(mainHost+metricsList+"&values="+valuesList).read()
-    except:
-        # If we have no network connection, just loop through the entry until we get a connection again. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
+    except: # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
+	connection.stop() # Engine is off, stopping Async calls.
         mainLoop(connection)
     syslog.syslog('Influxdb Web Return: '+output)
     time.sleep(5)
     
 
 def mainLoop(connection,portName):
+    for metrics in metricsArray:
+      connection.stop() #Ensure that async is stopped before adding watch calls
+      obdWatch(connection,metrics) # Loop until engine is shut off then wait
+
+    connection.start() # Start async calls now that we're watching PID's
     # FIX: NEED TO MAKE THIS HIS 01 TO DETERMINE SUPPORTED PID'S
     while 1:
         tempValues = []
         for metrics in metricsArray:
-            # Loop until engine is shut off then wait
-            obdQuery(connection,metrics)
             value = connection.query(obd.commands[metrics])
-            # Dump if RPM is none
-            if metrics == 'RPM' and value.value is None:
+            if metrics == 'RPM' and value.value is None: # Dump if RPM is none
                 connection.unwatch_all()
-                valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
-                # Push empty values so that gauges reset back to zero on uhacknect.com
+                valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0" # Push empty values so that gauges reset back to zero on uhacknect.com
                 pushInflux(mainHost, metricsList, valuesList, connection)
+		connection.stop() # Engine is off, stopping Async calls.
+                connection.unwatch_all() # Unwatch all
                 checkEngineOn(connection)
             tempValues.append(value.value)
         getActions(connection,portName,'on')
@@ -98,20 +98,24 @@ def getVehicleInfo(connection):
 
 def checkEngineOn(connection,portName):
     # Once connected, check if engine is running
-    obdQuery(connection,'RPM')
+    connection.stop() # Stop connection first
+    obdWatch(connection,'RPM') # Start watching RPM
+    connection.start()
     checkEngineOn = connection.query(obd.commands.RPM)
     while checkEngineOn.value is None:
         syslog.syslog('Engine is not started. Looping until the vehicle is turned on.')
-        time.sleep(5)
-        obdQuery(connection,'RPM')
-        getActions(connection,portName,'off')
+        time.sleep(5) # Wait 5 seconds so we're not blasting the logs
         checkEngineOn = connection.query(obd.commands.RPM)
+        getActions(connection,portName,'off')
     syslog.syslog('Engine is started..')
+    connection.stop()
+    #connection.unwatch_all() # Unwatch all Async calls
+    #syslog.syslog('Unwatching RPM in engineOn')
  
     try:
         mainLoop(connection,portName)
     except:
-        syslog.syslog('Caught escape key... exiting')
+        syslog.syslog('Main loop dumped... kicking off again')
         #valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
         # Push empty values so that gauges reset back to zero on uhacknect.com
         #pushInflux(mainHost, metricsList, valuesList, connection)
@@ -156,8 +160,7 @@ def getActions(connection,portName,engineStatus):
     actionURL = "http://www.uhacknect.com/api/actionPull.php?key="+vehicleKey
     actionOutput = urllib2.urlopen(actionURL).read()
     data = json.loads(actionOutput)
-    # Attempt to push, loop over if no network connection
-    try:
+    try: # Attempt to push, loop over if no network connection
         for actions in data:
           if actions['action'] == 'start' and engineStatus == 'off' :
               syslog.syslog('Remote action found... Starting vehicle')
@@ -173,7 +176,6 @@ def getActions(connection,portName,engineStatus):
               returnOut = pushAction('21746C901100\r\n',portName)
 
         if returnOut.find("OK") != -1:
-          print returnOut.find("OK")  
           try:
             actionCallbackUrl = "http://www.uhacknect.com/api/actionPull.php?key="+vehicleKey+"&id="+actions['id']
             actionCallbackOutput = urllib2.urlopen(actionCallbackUrl).read()
@@ -189,17 +191,14 @@ def getActions(connection,portName,engineStatus):
 	
 
 def kickOff():
-    # Auto connect to obd device
-    connection = obd.Async()
-    # Check if connected and continue, else loop
-    portScan = obd.scanSerial()
+    portScan = obd.scanSerial() # Check if connected and continue, else loop
     while len(portScan) == 0:
         syslog.syslog('No valid device found. Please ensure ELM327 is on and connected. Looping with 5 seconds pause')
-        portScan = len(obd.scanSerial())
+        portScan = obd.scanSerial()
         time.sleep(5)
+    connection = obd.Async() # Auto connect to obd device
     portName = portScan[0]
-    print portName
-    syslog.syslog('Connected to '+connection.get_port_name()+' successfully')
+    syslog.syslog('Connected to '+portName+' successfully')
     #getVehicleInfo(connection)
     #checkCodes(connection)
     checkEngineOn(connection,portName) 
