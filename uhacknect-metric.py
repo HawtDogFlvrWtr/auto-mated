@@ -112,23 +112,43 @@ def checkEngineOn(connection,portName):
         mainLoop(connection,portName)
     except:
         syslog.syslog('Caught escape key... exiting')
-        valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
+        #valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
         # Push empty values so that gauges reset back to zero on uhacknect.com
-        pushInflux(mainHost, metricsList, valuesList, connection)
+        #pushInflux(mainHost, metricsList, valuesList, connection)
         # Engine has been shut off, start over and wait for commands and for engine start.
         kickOff()
 
 def pushAction(action,portName):
+    attempts = 2
+    buffer = b''
     s = serial.Serial( portName, baudrate=38400 )
     s.write('STP31\r\n')
     s.write('ATSH1C0\r\n')
-    s.write('STP31\r\n')
-    s.write('ATSH1C0\r\n')
-    s.write('STP31\r\n')
-    s.write('ATSH1C0\r\n')
-    s.write('STP31\r\n')
-    s.write('ATSH1C0\r\n')
     s.write(action)
+    while True:
+        c = s.read(1)
+        # if nothing was received
+        if not c:
+  
+            if attempts <= 0:
+                syslog.syslog('never received prompt character')
+                break
+
+            syslog.syslog('found nothing')
+            attempts -= 1
+            continue
+        # end on chevron (ELM prompt character)   
+        if c == b'>':
+            break
+
+        # skip null characters (ELM spec page 9)
+        if c == b'\x00':
+            continue
+
+        buffer += c  
+
+    raw = buffer.encode('ascii','ignore')
+    return raw
     s.close()
     
 def getActions(connection,portName,engineStatus):
@@ -139,20 +159,31 @@ def getActions(connection,portName,engineStatus):
     # Attempt to push, loop over if no network connection
     try:
         for actions in data:
-            if actions['action'] == 'start' and engineStatus == 'off' :
-                syslog.syslog('Remote action found... Starting vehicle')
-                pushAction('69AA37901100\r\n',portName)
-            elif actions['action'] == 'stop' and engineStatus == 'on' :
-                syslog.syslog('Remote action found... Stopping vehicle')
-                pushAction('6AAA37901100\r\n',portName)
-            elif actions['action'] == 'unlock':
-                syslog.syslog('Remote action found... Unlocking vehicle')
-                pushAction('24746C901100\r\n',portName)
-            elif actions['action'] == 'lock':
-                syslog.syslog('Remote action found... Locking vehicle')
-                pushAction('21746C901100\r\n',portName)
+          if actions['action'] == 'start' and engineStatus == 'off' :
+              syslog.syslog('Remote action found... Starting vehicle')
+              returnOut = pushAction('69AA37901100\r\n',portName)
+          elif actions['action'] == 'stop' and engineStatus == 'on' :
+              syslog.syslog('Remote action found... Stopping vehicle')
+              returnOut = pushAction('6AAA37901100\r\n',portName)
+          elif actions['action'] == 'unlock':
+              syslog.syslog('Remote action found... Unlocking vehicle')
+              returnOut = pushAction('24746C901100\r\n',portName)
+          elif actions['action'] == 'lock':
+              syslog.syslog('Remote action found... Locking vehicle')
+              returnOut = pushAction('21746C901100\r\n',portName)
+
+        if returnOut.find("OK") != -1:
+          print returnOut.find("OK")  
+          try:
+            actionCallbackUrl = "http://www.uhacknect.com/api/actionPull.php?key="+vehicleKey+"&id="+actions['id']
+            actionCallbackOutput = urllib2.urlopen(actionCallbackUrl).read()
+            if actionCallbackOutput.find("OK") != -1:
+              syslog.syslog('Marked action as performed')
+          except:
+            syslog.syslog('Failed to submit completion of action.. trying again')
     except:
           syslog.syslog('Something failed in actions... will try again in a bit')
+
   except:
       syslog.syslog('No actions to perform')
 	
@@ -161,12 +192,13 @@ def kickOff():
     # Auto connect to obd device
     connection = obd.Async()
     # Check if connected and continue, else loop
-    portScan = len(obd.scanSerial())
-    while portScan == 0:
+    portScan = obd.scanSerial()
+    while len(portScan) == 0:
         syslog.syslog('No valid device found. Please ensure ELM327 is on and connected. Looping with 5 seconds pause')
         portScan = len(obd.scanSerial())
         time.sleep(5)
-    portName = connection.get_port_name()
+    portName = portScan[0]
+    print portName
     syslog.syslog('Connected to '+connection.get_port_name()+' successfully')
     #getVehicleInfo(connection)
     #checkCodes(connection)
