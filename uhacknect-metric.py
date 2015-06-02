@@ -116,6 +116,8 @@ def checkEngineOn(connection,portName):
         mainLoop(connection,portName)
     except:
         syslog.syslog('Main loop dumped... kicking off again')
+        connection.stop()
+        connection.unwatch_all()
         #valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
         # Push empty values so that gauges reset back to zero on uhacknect.com
         #pushInflux(mainHost, metricsList, valuesList, connection)
@@ -129,6 +131,7 @@ def pushAction(action,portName):
     s.write('STP31\r\n')
     s.write('ATSH1C0\r\n')
     s.write(action)
+    s.flush()
     while True:
         c = s.read(1)
         # if nothing was received

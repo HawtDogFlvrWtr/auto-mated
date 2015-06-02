@@ -7,8 +7,8 @@
 #
 
 process=$(/bin/ps -ef | /bin/grep -c bluetooth_search.sh)
-if [[ $process -gt 3 ]]; then
-        logger Instance already running.. exiting... 
+if [[ $process -gt 4 ]]; then
+        logger Instance already running.. exiting... $process running
 	exit 0
 fi
 connectDevices=$(/usr/bin/bluez-test-device list | grep -c OBDLink)
