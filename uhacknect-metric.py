@@ -51,7 +51,8 @@ def pushInflux(mainHost, metricsList, valuesList, connection):
         output = urllib2.urlopen(mainHost+metricsList+"&values="+valuesList).read()
     except: # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
 	connection.stop() # Engine is off, stopping Async calls.
-connection.unwatch_all()        mainLoop(connection)
+       connection.unwatch_all()
+       mainLoop(connection)
     syslog.syslog('Influxdb Web Return: '+output)
     time.sleep(5)
     
