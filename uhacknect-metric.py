@@ -130,6 +130,10 @@ def pushAction(action,portName):
     s = serial.Serial( portName, baudrate=38400 )
     s.write('STP31\r\n')
     s.write('ATSH1C0\r\n')
+    s.write('STP31\r\n')
+    s.write('ATSH1C0\r\n')
+    s.write('STP31\r\n')
+    s.write('ATSH1C0\r\n')
     s.write(action)
     s.flush()
     while True:
