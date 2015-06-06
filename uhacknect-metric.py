@@ -43,6 +43,7 @@ metricsList = ','.join([str(x) for x in metricsArray])
 
 
 def obdWatch(connection,metric):
+    syslog.syslog('Watching: '+metric)
     connection.watch(obd.commands[metric]) #loop through each 
 
 def pushInflux(mainHost, metricsList, valuesList, connection):
@@ -50,11 +51,8 @@ def pushInflux(mainHost, metricsList, valuesList, connection):
     try:
         output = urllib2.urlopen(mainHost+metricsList+"&values="+valuesList).read()
     except: # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
-	connection.stop() # Engine is off, stopping Async calls.
-       connection.unwatch_all()
-       mainLoop(connection)
+        syslog.syslog('Network connection down, looping until its up')
     syslog.syslog('Influxdb Web Return: '+output)
-    time.sleep(5)
     
 
 def mainLoop(connection,portName):
@@ -63,6 +61,7 @@ def mainLoop(connection,portName):
       obdWatch(connection,metrics) # Loop until engine is shut off then wait
 
     connection.start() # Start async calls now that we're watching PID's
+    time.sleep(5) #Wait for first metric to come in.
     # FIX: NEED TO MAKE THIS HIS 01 TO DETERMINE SUPPORTED PID'S
     while 1:
         tempValues = []
@@ -110,8 +109,8 @@ def checkEngineOn(connection,portName):
         getActions(connection,portName,'off')
     syslog.syslog('Engine is started..')
     connection.stop()
-    #connection.unwatch_all() # Unwatch all Async calls
-    #syslog.syslog('Unwatching RPM in engineOn')
+    connection.unwatch_all() # Unwatch all Async calls
+    syslog.syslog('Stopping RPM watch in Engine ON')
  
     try:
         mainLoop(connection,portName)
@@ -119,9 +118,6 @@ def checkEngineOn(connection,portName):
         syslog.syslog('Main loop dumped... kicking off again')
         connection.stop()
         connection.unwatch_all()
-        #valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
-        # Push empty values so that gauges reset back to zero on uhacknect.com
-        #pushInflux(mainHost, metricsList, valuesList, connection)
         # Engine has been shut off, start over and wait for commands and for engine start.
         kickOff()
 
