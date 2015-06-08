@@ -54,7 +54,10 @@ def dumpObd(connection):
 def pushInflux(mainHost, metricsList, valuesList, connection):
     # Attempt to push, loop over if no network connection
     try:
-        output = urllib2.urlopen(mainHost+metricsList+"&values="+valuesList).read()
+        if debugOn == False:
+          output = urllib2.urlopen(mainHost+metricsList+"&values="+valuesList).read()
+        else:
+          syslog.syslog('Debug on.. not pushing to influxdb')
     except: # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
         syslog.syslog('Network connection down, looping until its up')
     syslog.syslog('Influxdb Web Return: '+output)
@@ -76,14 +79,14 @@ def mainLoop(connection,portName):
             if metrics == 'RPM' and value.value is None: # Dump if RPM is none
                 dumpObd(connection)
                 valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0" # Push empty values so that gauges reset back to zero on uhacknect.com
-                #pushInflux(mainHost, metricsList, valuesList, connection)
+                pushInflux(mainHost, metricsList, valuesList, connection)
                 break # jump from while if engine is no longer running
             tempValues.append(value.value)
         getActions(connection,portName,'on')
         valuesList = ','.join([str(x) for x in tempValues])
         syslog.syslog('Influx Metrics List: '+metricsList)
         syslog.syslog('Influx Values List: '+valuesList)
-        #pushInflux(mainHost, metricsList, valuesList, connection)
+        pushInflux(mainHost, metricsList, valuesList, connection)
         time.sleep(5)
 
 def checkCodes(connection):
