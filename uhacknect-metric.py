@@ -16,6 +16,7 @@ import random
 import json
 import serial
 
+debugOn = False
 #obd.debug.console = True
 # Checking if a config file exists, if it doesn't, then create one and fill it.
 configFile = '/etc/uhacknect.conf'
@@ -46,6 +47,10 @@ def obdWatch(connection,metric):
     syslog.syslog('Watching: '+metric)
     connection.watch(obd.commands[metric]) #loop through each 
 
+def dumpObd(connection):
+    connection.stop()
+    connection.unwatch_all()
+
 def pushInflux(mainHost, metricsList, valuesList, connection):
     # Attempt to push, loop over if no network connection
     try:
@@ -56,30 +61,30 @@ def pushInflux(mainHost, metricsList, valuesList, connection):
     
 
 def mainLoop(connection,portName):
+    dumpObd(connection)
     for metrics in metricsArray:
-      connection.stop() #Ensure that async is stopped before adding watch calls
-      obdWatch(connection,metrics) # Loop until engine is shut off then wait
+      obdWatch(connection,metrics) # Watch all metrics
 
     connection.start() # Start async calls now that we're watching PID's
-    time.sleep(5) #Wait for first metric to come in.
+    time.sleep(5) #Wait for first metrics to come in.
+    
     # FIX: NEED TO MAKE THIS HIS 01 TO DETERMINE SUPPORTED PID'S
     while 1:
         tempValues = []
         for metrics in metricsArray:
             value = connection.query(obd.commands[metrics])
             if metrics == 'RPM' and value.value is None: # Dump if RPM is none
-                connection.unwatch_all()
+                dumpObd(connection)
                 valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0" # Push empty values so that gauges reset back to zero on uhacknect.com
-                pushInflux(mainHost, metricsList, valuesList, connection)
-		connection.stop() # Engine is off, stopping Async calls.
-                connection.unwatch_all() # Unwatch all
-                checkEngineOn(connection)
+                #pushInflux(mainHost, metricsList, valuesList, connection)
+                break # jump from while if engine is no longer running
             tempValues.append(value.value)
         getActions(connection,portName,'on')
         valuesList = ','.join([str(x) for x in tempValues])
         syslog.syslog('Influx Metrics List: '+metricsList)
         syslog.syslog('Influx Values List: '+valuesList)
-        pushInflux(mainHost, metricsList, valuesList, connection)
+        #pushInflux(mainHost, metricsList, valuesList, connection)
+        time.sleep(5)
 
 def checkCodes(connection):
     syslog.syslog('Checking engine for error codes...')
@@ -98,28 +103,17 @@ def getVehicleInfo(connection):
 
 def checkEngineOn(connection,portName):
     # Once connected, check if engine is running
-    connection.stop() # Stop connection first
+    dumpObd(connection)
     obdWatch(connection,'RPM') # Start watching RPM
     connection.start()
+    time.sleep(5)
     checkEngineOn = connection.query(obd.commands.RPM)
-    while checkEngineOn.value is None:
-        syslog.syslog('Engine is not started. Looping until the vehicle is turned on.')
-        time.sleep(5) # Wait 5 seconds so we're not blasting the logs
-        checkEngineOn = connection.query(obd.commands.RPM)
-        getActions(connection,portName,'off')
-    syslog.syslog('Engine is started..')
-    connection.stop()
-    connection.unwatch_all() # Unwatch all Async calls
-    syslog.syslog('Stopping RPM watch in Engine ON')
- 
-    try:
-        mainLoop(connection,portName)
-    except:
-        syslog.syslog('Main loop dumped... kicking off again')
-        connection.stop()
-        connection.unwatch_all()
-        # Engine has been shut off, start over and wait for commands and for engine start.
-        kickOff()
+    syslog.syslog('Engine is not started. Looping until the vehicle is turned on.')
+    dumpObd(connection)
+    if checkEngineOn.value == None: #Check if we have an RPM value.. if not return false
+      return False
+    else: 
+      return True
 
 def pushAction(action,portName):
     attempts = 2
@@ -194,18 +188,30 @@ def getActions(connection,portName,engineStatus):
       syslog.syslog('No actions to perform')
 	
 
-def kickOff():
-    portScan = obd.scanSerial() # Check if connected and continue, else loop
-    while len(portScan) == 0:
-        syslog.syslog('No valid device found. Please ensure ELM327 is on and connected. Looping with 5 seconds pause')
-        portScan = obd.scanSerial()
-        time.sleep(5)
-    connection = obd.Async() # Auto connect to obd device
-    portName = portScan[0]
-    syslog.syslog('Connected to '+portName+' successfully')
-    #getVehicleInfo(connection)
-    #checkCodes(connection)
-    checkEngineOn(connection,portName) 
+def mainFunction():
+    while True:
+      if debugOn == True:
+        portName = '/dev/pts/17'
+        connection = obd.Async('/dev/pts/17')
+      else: 
+        portScan = obd.scanSerial() # Check if connected and continue, else loop
+        while len(portScan) == 0:
+            syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
+            portScan = obd.scanSerial()
+            time.sleep(5)
+        connection = obd.Async() # Auto connect to obd device
+        portName = portScan[0]
 
-kickOff()
+      syslog.syslog('Connected to '+portName+' successfully')
+      #getVehicleInfo(connection)
+      #checkCodes(connection)
+      engineStatus = checkEngineOn(connection,portName)
+      while engineStatus == False:
+        syslog.syslog('Engine is not running, checking again in 5 seconds...')
+        engineStatus = checkEngineOn(connection,portName)
+        getActions(connection,portName,'off')
+      syslog.syslog('Engine is started. Kicking off metrics loop..')
+      mainLoop(connection,portName)
+
+mainFunction()# Lets kick this stuff off
 
