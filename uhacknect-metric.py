@@ -210,6 +210,7 @@ def mainFunction():
                 portScan = obd.scanSerial()
                 time.sleep(5)
             connection = obd.Async()  # Auto connect to obd device
+            time.sleep(5)  # Sleep 5 seconds to ensure that all AT commands are run correctly
             portName = portScan[0]
 
         syslog.syslog('Connected to '+portName+' successfully')
