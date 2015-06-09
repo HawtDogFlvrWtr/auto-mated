@@ -63,7 +63,7 @@ def pushInflux(mainHost, metricsList, valuesList, connection):
     syslog.syslog('Influxdb Web Return: '+output)
     
 
-def mainLoop(connection,portName):
+def mainLoop(connection, portName, engineStatus):
     dumpObd(connection)
     for metrics in metricsArray:
       obdWatch(connection,metrics) # Watch all metrics
@@ -72,7 +72,7 @@ def mainLoop(connection,portName):
     time.sleep(5) #Wait for first metrics to come in.
     
     # FIX: NEED TO MAKE THIS HIS 01 TO DETERMINE SUPPORTED PID'S
-    while 1:
+    while engineStatus == True:
         tempValues = []
         for metrics in metricsArray:
             value = connection.query(obd.commands[metrics])
@@ -80,7 +80,8 @@ def mainLoop(connection,portName):
                 dumpObd(connection)
                 valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0" # Push empty values so that gauges reset back to zero on uhacknect.com
                 pushInflux(mainHost, metricsList, valuesList, connection)
-                break # jump from while if engine is no longer running
+                engineStatus = False # Kill while above
+                break # jump from for if engine is no longer running
             tempValues.append(value.value)
         getActions(connection,portName,'on')
         valuesList = ','.join([str(x) for x in tempValues])
@@ -214,7 +215,7 @@ def mainFunction():
         engineStatus = checkEngineOn(connection,portName)
         getActions(connection,portName,'off')
       syslog.syslog('Engine is started. Kicking off metrics loop..')
-      mainLoop(connection,portName)
+      mainLoop(connection, portName, engineStatus)
 
 mainFunction()# Lets kick this stuff off
 
