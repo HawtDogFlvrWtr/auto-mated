@@ -15,8 +15,8 @@ import random
 import json
 import serial
 
-debugOn = False
-#obd.debug.console = True
+debugOn = False 
+obd.debug.console = False 
 # Checking if a config file exists, if it doesn't, then create one and fill it.
 configFile = '/etc/uhacknect.conf'
 if os.path.isfile(configFile):
@@ -52,6 +52,11 @@ def dumpObd(connection):
     connection.unwatch_all()
 
 
+def callBack(engineCallback, elmCallback):
+    syslog.syslog('Pinging uhacknect.com to let them know we are online')
+    urllib2.urlopen("http://www.uhacknect.com/api/callback.php?ping&key="+vehicleKey+"&enginestatus="+engineCallback+"&elmstatus="+elmCallback).read()
+
+
 def pushInflux(mainHost, metricsList, valuesList, connection):
     # Attempt to push, loop over if no network connection
     try:
@@ -74,6 +79,7 @@ def mainLoop(connection, portName, engineStatus):
 
     # FIX: NEED TO MAKE THIS HIS 01 TO DETERMINE SUPPORTED PID'S
     while engineStatus is True:
+        callBack('1', '1')  # Telling uhacknect the pi is online
         tempValues = []
         for metrics in metricsArray:
             value = connection.query(obd.commands[metrics])
@@ -206,6 +212,7 @@ def mainFunction():
         else:
             portScan = obd.scanSerial()  # Check if connected and continue, else loop
             while len(portScan) == 0:
+                callBack('0', '0')  # Telling uhacknect the pi is online
                 syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
                 portScan = obd.scanSerial()
                 time.sleep(5)
@@ -218,6 +225,7 @@ def mainFunction():
         # checkCodes(connection)
         engineStatus = checkEngineOn(connection, portName)
         while engineStatus is False:
+            callBack('0', '1')  # Telling uhacknect the pi is online
             syslog.syslog('Engine is not running, checking again in 5 seconds...')
             engineStatus = checkEngineOn(connection, portName)
             getActions(connection, portName, 'off')
