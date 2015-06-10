@@ -57,11 +57,11 @@ def pushInflux(mainHost, metricsList, valuesList, connection):
     try:
         if debugOn is False:
             output = urllib2.urlopen(mainHost+metricsList+"&values="+valuesList).read()
+            syslog.syslog('Influxdb Web Return: '+output)
         else:
             syslog.syslog('Debug on.. not pushing to influxdb')
     except:  # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
         syslog.syslog('Network connection down, looping until its up')
-    syslog.syslog('Influxdb Web Return: '+output)
 
 
 def mainLoop(connection, portName, engineStatus):
