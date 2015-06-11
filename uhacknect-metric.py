@@ -15,7 +15,7 @@ import random
 import json
 import serial
 
-debugOn = True
+debugOn = False
 obd.debug.console = False 
 # Checking if a config file exists, if it doesn't, then create one and fill it.
 configFile = '/etc/uhacknect.conf'
