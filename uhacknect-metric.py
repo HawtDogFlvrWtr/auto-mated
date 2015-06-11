@@ -53,8 +53,11 @@ def dumpObd(connection):
 
 
 def callBack(engineCallback, elmCallback):
-    syslog.syslog('Pinging uhacknect.com to let them know we are online')
-    urllib2.urlopen("http://www.uhacknect.com/api/callback.php?ping&key="+vehicleKey+"&enginestatus="+engineCallback+"&elmstatus="+elmCallback).read()
+    try:
+        urllib2.urlopen("http://www.uhacknect.com/api/callback.php?ping&key="+vehicleKey+"&enginestatus="+engineCallback+"&elmstatus="+elmCallback).read()
+        syslog.syslog('Pinging uhacknect.com to let them know we are online')
+    except:  # Woops, we have no network connection. 
+        syslog.syslog('Unable to ping uhacknect.com as the network appears to be down. Trying again')
 
 
 def pushInflux(mainHost, metricsList, valuesList, connection):
