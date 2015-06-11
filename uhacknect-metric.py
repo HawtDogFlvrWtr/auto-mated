@@ -15,7 +15,7 @@ import random
 import json
 import serial
 
-debugOn = False 
+debugOn = True
 obd.debug.console = False 
 # Checking if a config file exists, if it doesn't, then create one and fill it.
 configFile = '/etc/uhacknect.conf'
@@ -38,7 +38,7 @@ else:
     cfgFile.close()
 
 mainHost = "http://www.uhacknect.com/api/influxPush.php?key="+vehicleKey+"&metric="
-metricsArray = ["RPM", "SPEED", "TIMING_ADVANCE", "INTAKE_TEMP", "THROTTLE_POS", "MAF", "RUN_TIME", "FUEL_LEVEL", "COOLANT_TEMP", "ENGINE_LOAD", "FUEL_PRESSURE", "INTAKE_PRESSURE", "AMBIANT_AIR_TEMP", "OIL_TEMP", "FUEL_RATE"]
+metricsArray = ["time", "RPM", "SPEED", "TIMING_ADVANCE", "INTAKE_TEMP", "THROTTLE_POS", "MAF", "RUN_TIME", "FUEL_LEVEL", "COOLANT_TEMP", "ENGINE_LOAD", "FUEL_PRESSURE", "INTAKE_PRESSURE", "AMBIANT_AIR_TEMP", "OIL_TEMP", "FUEL_RATE"]
 metricsList = ','.join([str(x) for x in metricsArray])
 
 
@@ -75,7 +75,8 @@ def pushInflux(mainHost, metricsList, valuesList, connection):
 def mainLoop(connection, portName, engineStatus):
     dumpObd(connection)
     for metrics in metricsArray:
-        obdWatch(connection, metrics)  # Watch all metrics
+        if metrics != 'time':
+            obdWatch(connection, metrics)  # Watch all metrics
 
     connection.start()  # Start async calls now that we're watching PID's
     time.sleep(5)  # Wait for first metrics to come in.
@@ -84,15 +85,21 @@ def mainLoop(connection, portName, engineStatus):
     while engineStatus is True:
         callBack('1', '1')  # Telling uhacknect the pi is online
         tempValues = []
+        timeValue = time.time()
         for metrics in metricsArray:
-            value = connection.query(obd.commands[metrics])
-            if metrics == 'RPM' and value.value is None:  # Dump if RPM is none
+            if metrics == 'time':  # Grab current time if metric is asking to provide the time.
+                value = int(timeValue)
+            else:
+                value = connection.query(obd.commands[metrics])
+                value = value.value
+
+            if metrics == 'RPM' and value is None:  # Dump if RPM is none
                 dumpObd(connection)
-                valuesList = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on uhacknect.com
+                valuesList = int(timeValue)+",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on uhacknect.com
                 pushInflux(mainHost, metricsList, valuesList, connection)
                 engineStatus = False  # Kill while above
                 break  # jump from for if engine is no longer running
-            tempValues.append(value.value)
+            tempValues.append(value)
         getActions(connection, portName, 'on')
         valuesList = ','.join([str(x) for x in tempValues])
         syslog.syslog('Influx Metrics List: '+metricsList)
