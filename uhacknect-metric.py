@@ -143,7 +143,6 @@ def mainLoop(connection, portName, engineStatus):
         tempValues = []
         timeValue = time.time()
         for metrics in metricsArray:
-            uDisplay('ELM327:    Good', 'Engine:   Start', 'Metrics:    Good', '', '')
             if metrics == 'time':  # Grab current time if metric is asking to provide the time.
                 value = int(timeValue)
             else:
