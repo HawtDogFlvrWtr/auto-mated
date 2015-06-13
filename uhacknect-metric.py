@@ -5,6 +5,9 @@
 #
 
 import obd
+import sys
+sys.path.append('/usr/local/lib/lcd')
+from lcd import *
 import time
 import urllib2
 import syslog
@@ -16,7 +19,28 @@ import json
 import serial
 
 debugOn = False
-obd.debug.console = False 
+obd.debug.console = False
+initDisplay()
+
+# Setting global variables
+global engineStatus
+engineStatus = False
+
+global portName
+portName = None
+
+global networkStatus
+networkStatus = "  Down"
+
+global influxStatus
+influxStatus = "  Down"
+
+global metricSuccess
+metricsSuccess = 0
+
+global metricFail
+metricsFail = 0
+
 # Checking if a config file exists, if it doesn't, then create one and fill it.
 configFile = '/etc/uhacknect.conf'
 if os.path.isfile(configFile):
@@ -42,6 +66,28 @@ metricsArray = ["time", "RPM", "SPEED", "TIMING_ADVANCE", "INTAKE_TEMP", "THROTT
 metricsList = ','.join([str(x) for x in metricsArray])
 
 
+def uDisplay():
+    timeNow = time.time()
+    # Setting up Engine text
+    if engineStatus == False:
+        engineText = "   Down"
+    else:
+        engineText = "     Up"
+  
+    # Setting up BT Text
+    if portName is None:
+        btStatus = "       Down"
+    else:
+        btStatus = "         Up"
+
+    lcdDisplayText(0, 0, "Key:"+vehicleKey)
+    lcdDisplayText(0, 8, "BT:"+btStatus)
+    lcdDisplayText(0, 16, "ENGINE:"+engineText)
+    lcdDisplayText(0, 24, "NETWORK:"+networkStatus)
+    lcdDisplayText(0, 32, "METRICS:"+influxStatus)
+    lcdDisplayText(0, 40, "F:"+str(metricsFail)+ " S:"+str(metricsSuccess))
+    lcdDisplay()
+
 def obdWatch(connection, metric):
     syslog.syslog('Watching: '+metric)
     connection.watch(obd.commands[metric])  # loop through each
@@ -53,14 +99,20 @@ def dumpObd(connection):
 
 
 def callBack(engineCallback, elmCallback):
+    global networkStatus
     try:
         urllib2.urlopen("http://www.uhacknect.com/api/callback.php?ping&key="+vehicleKey+"&enginestatus="+engineCallback+"&elmstatus="+elmCallback).read()
         syslog.syslog('Pinging uhacknect.com to let them know we are online')
+        networkStatus = "    Up"
     except:  # Woops, we have no network connection. 
         syslog.syslog('Unable to ping uhacknect.com as the network appears to be down. Trying again')
+        networkStatus = "  Down"
 
 
 def pushInflux(mainHost, metricsList, valuesList, connection):
+    global influxStatus
+    global metricsSuccess
+    global metricsFail
     # Attempt to push, loop over if no network connection
     try:
         if debugOn is False:
@@ -68,8 +120,12 @@ def pushInflux(mainHost, metricsList, valuesList, connection):
             syslog.syslog('Influxdb Web Return: '+output)
         else:
             syslog.syslog('Debug on.. not pushing to influxdb')
+        influxStatus = "    Up"
+        metricsSuccess += 1
     except:  # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
         syslog.syslog('Network connection down, looping until its up')
+        influxStatus = "  Down"
+        metricsFail += 1
 
 
 def mainLoop(connection, portName, engineStatus):
@@ -87,6 +143,7 @@ def mainLoop(connection, portName, engineStatus):
         tempValues = []
         timeValue = time.time()
         for metrics in metricsArray:
+            uDisplay('ELM327:    Good', 'Engine:   Start', 'Metrics:    Good', '', '')
             if metrics == 'time':  # Grab current time if metric is asking to provide the time.
                 value = int(timeValue)
             else:
@@ -215,6 +272,8 @@ def getActions(connection, portName, engineStatus):
 
 
 def mainFunction():
+    global portName
+    global engineStatus
     while True:
         if debugOn is True:
             portName = '/dev/pts/17'
@@ -225,6 +284,7 @@ def mainFunction():
                 callBack('0', '0')  # Telling uhacknect the pi is online
                 syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
                 portScan = obd.scanSerial()
+                uDisplay()
                 time.sleep(5)
             connection = obd.Async()  # Auto connect to obd device
             time.sleep(5)  # Sleep 5 seconds to ensure that all AT commands are run correctly
@@ -238,6 +298,7 @@ def mainFunction():
             callBack('0', '1')  # Telling uhacknect the pi is online
             syslog.syslog('Engine is not running, checking again in 5 seconds...')
             engineStatus = checkEngineOn(connection, portName)
+            uDisplay()
             getActions(connection, portName, 'off')
         syslog.syslog('Engine is started. Kicking off metrics loop..')
         mainLoop(connection, portName, engineStatus)
