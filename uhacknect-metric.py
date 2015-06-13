@@ -162,6 +162,7 @@ def mainLoop(connection, portName, engineStatus):
         syslog.syslog('Influx Metrics List: '+metricsList)
         syslog.syslog('Influx Values List: '+valuesList)
         pushInflux(mainHost, metricsList, valuesList, connection)
+        uDisplay()
         time.sleep(5)
 
 
