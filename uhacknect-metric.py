@@ -18,7 +18,7 @@ import random
 import json
 import serial
 
-debugOn = False
+debugOn = False 
 obd.debug.console = False
 initDisplay()
 
@@ -80,12 +80,18 @@ def uDisplay():
     else:
         btStatus = "         Up"
 
+    # Setup debug
+    if debugOn == True:
+        debugMsg = " DEBUG"
+    else:
+        debugMsg = ""
+
     lcdDisplayText(0, 0, "Key:"+vehicleKey)
     lcdDisplayText(0, 8, "BT:"+btStatus)
     lcdDisplayText(0, 16, "ENGINE:"+engineText)
     lcdDisplayText(0, 24, "NETWORK:"+networkStatus)
     lcdDisplayText(0, 32, "METRICS:"+influxStatus)
-    lcdDisplayText(0, 40, "F:"+str(metricsFail)+ " S:"+str(metricsSuccess))
+    lcdDisplayText(0, 40, "F:"+str(metricsFail)+ " S:"+str(metricsSuccess)+" "+debugMsg)
     lcdDisplay()
 
 def obdWatch(connection, metric):
@@ -151,7 +157,7 @@ def mainLoop(connection, portName, engineStatus):
 
             if metrics == 'RPM' and value is None:  # Dump if RPM is none
                 dumpObd(connection)
-                valuesList = int(timeValue)+",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on uhacknect.com
+                valuesList = str(int(timeValue))+",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on uhacknect.com
                 pushInflux(mainHost, metricsList, valuesList, connection)
                 engineStatus = False  # Kill while above
                 break  # jump from for if engine is no longer running
@@ -304,4 +310,5 @@ def mainFunction():
         mainLoop(connection, portName, engineStatus)
 
 
+uDisplay()
 mainFunction()  # Lets kick this stuff off
