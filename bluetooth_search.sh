@@ -29,6 +29,7 @@ if [ $connectDevices != 1 ]; then
 				rfcomm connect /dev/rfcomm0 $findDevice 1 &
 				sleep 10
 				# Checking if we successfully connected via rfcomm
+				deviceMac=$(/usr/bin/bluez-test-device list | grep OBDLink | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
 				rfcommConfirm=$(rfcomm -a | grep -c $deviceMac)
 				if [ "$rfcommConfirm" != "" ]; then
 					logger Successfully connected via RFCOMM
@@ -44,7 +45,7 @@ if [ $connectDevices != 1 ]; then
 	done
 else
 	logger OBDLink device is already added... Checking if we\'re connected...
-	deviceMac=$(bt-device -l | grep OBDLink | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
+	deviceMac=$(/usr/bin/bluez-test-device list | grep OBDLink | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
 	if [ "$deviceMac" != "" ]; then
 		rfcommConfirm=$(rfcomm -a | grep -c $deviceMac)
 	else
@@ -59,7 +60,7 @@ else
 			rfcommConfirm=$(rfcomm -a | grep -c $deviceMac)
 			if [ "$rfcommConfirm" != 1 ]; then
 				logger Failed to connnect to device.. Going to sleep and try again
-				sleep 30
+				sleep 5 
 			else
 				logger Successfully connected $deviceMac to /dev/rfcomm0
 			fi
