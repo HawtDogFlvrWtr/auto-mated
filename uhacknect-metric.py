@@ -4,6 +4,8 @@
 # 5/1/2015
 #
 
+from Queue import Queue
+from threading import Thread
 import obd
 import sys
 sys.path.append('/usr/local/lib/lcd')
@@ -41,6 +43,8 @@ metricsSuccess = 0
 global metricFail
 metricsFail = 0
 
+global vehicleKey
+
 # Checking if a config file exists, if it doesn't, then create one and fill it.
 configFile = '/etc/uhacknect.conf'
 if os.path.isfile(configFile):
@@ -61,38 +65,40 @@ else:
         syslog.syslog("Failed writing config to "+configFile+".")
     cfgFile.close()
 
-mainHost = "http://www.uhacknect.com/api/influxPush.php?key="+vehicleKey+"&metric="
+mainHost = "http://www.auto-mated.com/api/influxPush.php?key="+vehicleKey+"&metric="
 metricsArray = ["time", "RPM", "SPEED", "TIMING_ADVANCE", "INTAKE_TEMP", "THROTTLE_POS", "MAF", "RUN_TIME", "FUEL_LEVEL", "COOLANT_TEMP", "ENGINE_LOAD", "FUEL_PRESSURE", "INTAKE_PRESSURE", "AMBIANT_AIR_TEMP", "OIL_TEMP", "FUEL_RATE"]
 metricsList = ','.join([str(x) for x in metricsArray])
 
 
 def uDisplay():
-    timeNow = time.time()
-    # Setting up Engine text
-    if engineStatus == False:
-        engineText = "   Down"
-    else:
-        engineText = "     Up"
+    while True:
+        timeNow = time.time()
+        # Setting up Engine text
+        if engineStatus == False:
+            engineText = "   Down"
+        else:
+            engineText = "     Up"
   
-    # Setting up BT Text
-    if portName is None:
-        btStatus = "       Down"
-    else:
-        btStatus = "         Up"
+        # Setting up BT Text
+        if portName is None:
+            btStatus = "       Down"
+        else:
+            btStatus = "         Up"
 
-    # Setup debug
-    if debugOn == True:
-        debugMsg = " DEBUG"
-    else:
-        debugMsg = ""
+        # Setup debug
+        if debugOn == True:
+            debugMsg = " DEBUG"
+        else:
+            debugMsg = ""
 
-    lcdDisplayText(0, 0, "Key:"+vehicleKey)
-    lcdDisplayText(0, 8, "BT:"+btStatus)
-    lcdDisplayText(0, 16, "ENGINE:"+engineText)
-    lcdDisplayText(0, 24, "NETWORK:"+networkStatus)
-    lcdDisplayText(0, 32, "METRICS:"+influxStatus)
-    lcdDisplayText(0, 40, "F:"+str(metricsFail)+ " S:"+str(metricsSuccess)+" "+debugMsg)
-    lcdDisplay()
+        lcdDisplayText(0, 0, "Key:"+vehicleKey)
+        lcdDisplayText(0, 8, "BT:"+btStatus)
+        lcdDisplayText(0, 16, "ENGINE:"+engineText)
+        lcdDisplayText(0, 24, "NETWORK:"+networkStatus)
+        lcdDisplayText(0, 32, "METRICS:"+influxStatus)
+        lcdDisplayText(0, 40, "F:"+str(metricsFail)+ " S:"+str(metricsSuccess)+" "+debugMsg)
+        lcdDisplay()
+        time.sleep(1)
 
 def obdWatch(connection, metric):
     syslog.syslog('Watching: '+metric)
@@ -104,15 +110,26 @@ def dumpObd(connection):
     connection.unwatch_all()
 
 
-def callBack(engineCallback, elmCallback):
-    global networkStatus
-    try:
-        urllib2.urlopen("http://www.uhacknect.com/api/callback.php?ping&key="+vehicleKey+"&enginestatus="+engineCallback+"&elmstatus="+elmCallback).read()
-        syslog.syslog('Pinging uhacknect.com to let them know we are online')
-        networkStatus = "    Up"
-    except:  # Woops, we have no network connection. 
-        syslog.syslog('Unable to ping uhacknect.com as the network appears to be down. Trying again')
-        networkStatus = "  Down"
+def callBack():
+    while True:
+        if engineStatus == True:
+            engineCallback = '1'
+        else:
+            engineCallback = '0'
+
+        if portName is None:
+            elmCallback = '0'
+        else:
+            elmCallback = '1'
+        global networkStatus
+        try:
+            urllib2.urlopen("http://www.auto-mated.com/api/callback.php?ping&key="+vehicleKey+"&enginestatus="+engineCallback+"&elmstatus="+elmCallback).read()
+            syslog.syslog('Pinging auto-mated.com to let them know we are online')
+            networkStatus = "    Up"
+        except:  # Woops, we have no network connection. 
+            syslog.syslog('Unable to ping auto-mated.com as the network appears to be down. Trying again')
+            networkStatus = "  Down"
+        time.sleep(10)
 
 
 def pushInflux(mainHost, metricsList, valuesList, connection):
@@ -145,7 +162,6 @@ def mainLoop(connection, portName, engineStatus):
 
     # FIX: NEED TO MAKE THIS HIS 01 TO DETERMINE SUPPORTED PID'S
     while engineStatus is True:
-        callBack('1', '1')  # Telling uhacknect the pi is online
         tempValues = []
         timeValue = time.time()
         for metrics in metricsArray:
@@ -157,7 +173,7 @@ def mainLoop(connection, portName, engineStatus):
 
             if metrics == 'RPM' and value is None:  # Dump if RPM is none
                 dumpObd(connection)
-                valuesList = str(int(timeValue))+",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on uhacknect.com
+                valuesList = str(int(timeValue))+",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on auto-mated.com
                 pushInflux(mainHost, metricsList, valuesList, connection)
                 engineStatus = False  # Kill while above
                 break  # jump from for if engine is no longer running
@@ -167,7 +183,6 @@ def mainLoop(connection, portName, engineStatus):
         syslog.syslog('Influx Metrics List: '+metricsList)
         syslog.syslog('Influx Values List: '+valuesList)
         pushInflux(mainHost, metricsList, valuesList, connection)
-        uDisplay()
         time.sleep(5)
 
 
@@ -244,7 +259,7 @@ def pushAction(action, portName):
 
 def getActions(connection, portName, engineStatus):
     try:
-        actionURL = "http://www.uhacknect.com/api/actionPull.php?key="+vehicleKey
+        actionURL = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey
         actionOutput = urllib2.urlopen(actionURL).read()
         data = json.loads(actionOutput)
         try:  # Attempt to push, loop over if no network connection
@@ -264,7 +279,7 @@ def getActions(connection, portName, engineStatus):
 
             if returnOut.find("OK") != -1:
                 try:
-                    actionCallbackUrl = "http://www.uhacknect.com/api/actionPull.php?key="+vehicleKey+"&id="+actions['id']
+                    actionCallbackUrl = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey+"&id="+actions['id']
                     actionCallbackOutput = urllib2.urlopen(actionCallbackUrl).read()
                     if actionCallbackOutput.find("OK") != -1:
                         syslog.syslog('Marked action as performed')
@@ -287,10 +302,8 @@ def mainFunction():
         else:
             portScan = obd.scanSerial()  # Check if connected and continue, else loop
             while len(portScan) == 0:
-                callBack('0', '0')  # Telling uhacknect the pi is online
                 syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
                 portScan = obd.scanSerial()
-                uDisplay()
                 time.sleep(5)
             connection = obd.Async()  # Auto connect to obd device
             time.sleep(5)  # Sleep 5 seconds to ensure that all AT commands are run correctly
@@ -301,14 +314,21 @@ def mainFunction():
         # checkCodes(connection)
         engineStatus = checkEngineOn(connection, portName)
         while engineStatus is False:
-            callBack('0', '1')  # Telling uhacknect the pi is online
             syslog.syslog('Engine is not running, checking again in 5 seconds...')
             engineStatus = checkEngineOn(connection, portName)
-            uDisplay()
             getActions(connection, portName, 'off')
         syslog.syslog('Engine is started. Kicking off metrics loop..')
         mainLoop(connection, portName, engineStatus)
 
 
-uDisplay()
+# Kick off display thread
+displayThread = Thread(target=uDisplay)
+displayThread.setDaemon(True)
+displayThread.start()
+
+# Kick off callback thread
+callbackThread = Thread(target=callBack)
+callbackThread.setDaemon(True)
+callbackThread.start()
+
 mainFunction()  # Lets kick this stuff off
