@@ -232,7 +232,7 @@ def checkEngineOn(connection, portName):
 def pushAction(action, portName):
     attempts = 2
     buffer = b''
-    s = serial.Serial(portName, baudrate=38400)
+    s = serial.Serial(portName, baudrate=9600)
     s.write('STP31\r\n')
     s.write('ATSH1C0\r\n')
     s.write('STP31\r\n')
