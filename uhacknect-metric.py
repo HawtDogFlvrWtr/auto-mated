@@ -19,10 +19,15 @@ import string
 import random
 import json
 import serial
+from datetime import datetime
 
 debugOn = False 
 obd.debug.console = False
 initDisplay()
+
+# Setup Influx Queue
+influxQueue = Queue(maxsize=0)
+num_threads = 2
 
 # Setting global variables
 global engineStatus
@@ -72,6 +77,7 @@ metricsList = ','.join([str(x) for x in metricsArray])
 
 def uDisplay():
     while True:
+        queueSize = influxQueue.qsize()
         timeNow = time.time()
         # Setting up Engine text
         if engineStatus == False:
@@ -90,13 +96,16 @@ def uDisplay():
             debugMsg = " DEBUG"
         else:
             debugMsg = ""
-
-        lcdDisplayText(0, 0, "Key:"+vehicleKey)
+        if networkStatus == "    Up":
+            lcdDisplayText(0,0, "              ")
+            lcdDisplayText(0,0, "TIME: "+str(time.strftime("%I:%M:%S")))
+        else:
+            lcdDisplayText(0, 0, "Key:"+vehicleKey)
         lcdDisplayText(0, 8, "BT:"+btStatus)
         lcdDisplayText(0, 16, "ENGINE:"+engineText)
         lcdDisplayText(0, 24, "NETWORK:"+networkStatus)
         lcdDisplayText(0, 32, "METRICS:"+influxStatus)
-        lcdDisplayText(0, 40, "F:"+str(metricsFail)+ " S:"+str(metricsSuccess)+" "+debugMsg)
+        lcdDisplayText(0, 40, "Q:"+str(queueSize)+ " S:"+str(metricsSuccess)+" "+debugMsg)
         lcdDisplay()
         time.sleep(1)
 
@@ -132,23 +141,28 @@ def callBack():
         time.sleep(10)
 
 
-def pushInflux(mainHost, metricsList, valuesList, connection):
-    global influxStatus
-    global metricsSuccess
-    global metricsFail
-    # Attempt to push, loop over if no network connection
-    try:
-        if debugOn is False:
-            output = urllib2.urlopen(mainHost+metricsList+"&values="+valuesList).read()
-            syslog.syslog('Influxdb Web Return: '+output)
-        else:
-            syslog.syslog('Debug on.. not pushing to influxdb')
-        influxStatus = "    Up"
-        metricsSuccess += 1
-    except:  # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
-        syslog.syslog('Network connection down, looping until its up')
-        influxStatus = "  Down"
-        metricsFail += 1
+def pushInflux(influxQueue):
+    while True:
+        global influxStatus
+        global metricsSuccess
+        global metricsFail
+        influxQueueGet = influxQueue.get()
+        influxInfo = influxQueueGet.split(':')
+        # Attempt to push, loop over if no network connection
+        try:
+            if debugOn is False:
+                output = urllib2.urlopen(mainHost+influxInfo[0]+"&values="+influxInfo[1]).read()
+                syslog.syslog('Influxdb Web Return: '+output)
+            else:
+                syslog.syslog('Debug on.. not pushing to influxdb')
+            influxStatus = "    Up"
+            metricsSuccess += 1
+            influxQueue.task_done()  # If success, skim that off the top of the queue
+        except:  # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
+            syslog.syslog('Network connection down, looping until its up... after a brief word from our sponsors..')
+            influxStatus = "  Down"
+            metricsFail += 1
+            time.sleep(5)
 
 
 def mainLoop(connection, portName, engineStatus):
@@ -174,7 +188,7 @@ def mainLoop(connection, portName, engineStatus):
             if metrics == 'RPM' and value is None:  # Dump if RPM is none
                 dumpObd(connection)
                 valuesList = str(int(timeValue))+",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on auto-mated.com
-                pushInflux(mainHost, metricsList, valuesList, connection)
+                influxQueue.put(metricsList+':'+valuesList)
                 engineStatus = False  # Kill while above
                 break  # jump from for if engine is no longer running
             tempValues.append(value)
@@ -182,17 +196,14 @@ def mainLoop(connection, portName, engineStatus):
         valuesList = ','.join([str(x) for x in tempValues])
         syslog.syslog('Influx Metrics List: '+metricsList)
         syslog.syslog('Influx Values List: '+valuesList)
-        pushInflux(mainHost, metricsList, valuesList, connection)
+        influxQueue.put(metricsList+':'+valuesList)
         time.sleep(5)
 
 
 def checkCodes(connection):
     syslog.syslog('Checking engine for error codes...')
-    obdQuery(connection, 'STATUS')
-    errorCodes = connection.query(obd.commands.STATUS)
     obdQuery(connection, 'GET_DTC')
     readCodes = connection.query(obd.commands.GET_DTC)
-    print errorCodes
     print readCodes
 
 
@@ -320,6 +331,10 @@ def mainFunction():
         syslog.syslog('Engine is started. Kicking off metrics loop..')
         mainLoop(connection, portName, engineStatus)
 
+# Kick off influx threads
+influxThread = Thread(target=pushInflux, args=(influxQueue,))
+influxThread.setDaemon(True)
+influxThread.start()
 
 # Kick off display thread
 displayThread = Thread(target=uDisplay)
@@ -332,3 +347,4 @@ callbackThread.setDaemon(True)
 callbackThread.start()
 
 mainFunction()  # Lets kick this stuff off
+influxQueue.join()
