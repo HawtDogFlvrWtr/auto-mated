@@ -1,3 +1,8 @@
+#!/usr/bin/python
+#
+# Push LCD information to the front of the pi
+#
+
 sys.path.append('/usr/local/lib/lcd')
 from lcd import *
 
