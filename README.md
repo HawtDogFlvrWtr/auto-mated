@@ -1,5 +1,7 @@
-# uHacknect
-An alternative to Dodges uconnect access, for us folks with remote start on our vehicle but no unconnect access capabilities in our headunits. We'll be able to remotely start/stop/unlock/lock and hopefully much, more from the web. This was tested on Ubuntu 14.04
+# Auto-Mated.com
+Auto-mated is a framework built on the Raspberry Pi, that leverages untapped, built in functionality, allowing you to lock, unlock, start, stop and many other things, simply by sending commands to your vehicle.
+
+Our intent is to bring those abilities to your vehicle; As well as track vehicle statistics, view notifications about vehicle trouble codes, view real-time information about vehicle recalls from the manufacturer, as well as parental features that track the driving habbits of your child.
 
 # Requirements
 *  ObdLink LX (Hardware)
@@ -13,13 +15,4 @@ An alternative to Dodges uconnect access, for us folks with remote start on our 
 *  Bluetooth adapter (2.1+)
 
 # How-To
-1.  Install python, python-dev, libbluetooth-dev
-2.  Download and install pybluez (git clone https://github.com/karulis/pybluez, python setup.py install)
-3.  Install rfcomm
-4.  Attach to obdlink lx via bluetooth interface (or console)
-5.  Edit uhacknect.py with the mac address of your obdlink lx device
-6.  Run uhacknect.py (python uhacknet.py)
-
-# Workarounds
-
-*  If bluetooth in Ubuntu 14.04 turns off and back on again, run (rfkill block bluetooth) and try again. This is a known bug.
+TO BE UPDATED
