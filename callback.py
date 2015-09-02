@@ -1,3 +1,8 @@
+#!/usr/bin/python
+#
+# Call back function to ping home to show alive
+#
+
 def callBack():
     while True:
         if engineStatus == True:
