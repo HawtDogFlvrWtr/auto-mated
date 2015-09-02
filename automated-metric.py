@@ -27,9 +27,9 @@ initDisplay()
 
 # Setup Influx Queue
 influxQueue = Queue(maxsize=0)
-num_threads = 2
+num_threads = 5
 
-# Setting global variables
+# Setting initial global variables
 global engineStatus
 engineStatus = False
 
@@ -46,6 +46,8 @@ global metricSuccess
 metricsSuccess = 0
 
 global vehicleKey
+global inAction
+inAction = 0
 
 # Checking if a config file exists, if it doesn't, then create one and fill it.
 configFile = '/etc/uhacknect.conf'
@@ -68,9 +70,8 @@ else:
     cfgFile.close()
 
 mainHost = "http://www.auto-mated.com/api/influxPush.php?key="+vehicleKey+"&metric="
-metricsArray = ["time", "RPM", "SPEED", "TIMING_ADVANCE", "INTAKE_TEMP", "THROTTLE_POS", "MAF", "RUN_TIME", "FUEL_LEVEL", "COOLANT_TEMP", "ENGINE_LOAD", "FUEL_PRESSURE", "INTAKE_PRESSURE", "AMBIANT_AIR_TEMP", "OIL_TEMP", "FUEL_RATE"]
+metricsArray = ["time", "RPM", "SPEED", "TIMING_ADVANCE", "INTAKE_TEMP", "THROTTLE_POS", "MAF", "RUN_TIME", "FUEL_LEVEL", "COOLANT_TEMP", "ENGINE_LOAD", "FUEL_PRESSURE", "INTAKE_PRESSURE", "AMBIANT_AIR_TEMP", "OIL_TEMP"]
 metricsList = ','.join([str(x) for x in metricsArray])
-
 
 def uDisplay():
     while True:
@@ -110,11 +111,10 @@ def obdWatch(connection, metric):
     syslog.syslog('Watching: '+metric)
     connection.watch(obd.commands[metric])  # loop through each
 
-
-def dumpObd(connection):
+def dumpObd(connection, sleepTime):
     connection.stop()
     connection.unwatch_all()
-
+    time.sleep(sleepTime)
 
 def callBack():
     while True:
@@ -159,11 +159,12 @@ def pushInflux(influxQueue):
             influxQueue.task_done()  # Have to mark it as done anyway, but we roll it back into the Queue. 
             syslog.syslog('Network connection down, Tossing record back into queue until network is back')
             influxStatus = "  Down"
-            time.sleep(1)
+        time.sleep(1)
+    influxQueue.join()
 
 
 def mainLoop(connection, portName, engineStatus):
-    dumpObd(connection)
+    dumpObd(connection, 1)
     for metrics in metricsArray:
         if metrics != 'time':
             obdWatch(connection, metrics)  # Watch all metrics
@@ -183,7 +184,7 @@ def mainLoop(connection, portName, engineStatus):
                 value = value.value
 
             if metrics == 'RPM' and value is None:  # Dump if RPM is none
-                dumpObd(connection)
+                dumpObd(connection, 1)
                 valuesList = str(int(timeValue))+",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on auto-mated.com
                 influxQueue.put(metricsList+':'+valuesList)
                 engineStatus = False  # Kill while above
@@ -214,10 +215,8 @@ def pushAction(action, portName):
     attempts = 2
     buffer = b''
     s = serial.Serial(portName, baudrate=9600)
-    s.write('STP31\r\n')
-    s.write('ATSH1C0\r\n')
-    s.write('STP31\r\n')
-    s.write('ATSH1C0\r\n')
+    s.write('ATZ\r\n')
+    time.sleep(1)
     s.write('STP31\r\n')
     s.write('ATSH1C0\r\n')
     s.write(action)
@@ -257,16 +256,17 @@ def getActions():
             data = json.loads(actionOutput)
             try:  # Attempt to push, loop over if no network connection
                 for actions in data:
+                    inAction = 1
                     if actions['action'] == 'start' and engineStatus == False:
                         syslog.syslog('Remote action found... Starting vehicle')
                         returnOut = pushAction('69AA37901100\r\n', portName)
                     elif actions['action'] == 'stop' and engineStatus == True:
                         syslog.syslog('Remote action found... Stopping vehicle')
                         returnOut = pushAction('6AAA37901100\r\n', portName)
-                    elif actions['action'] == 'unlock':
+                    elif actions['action'] == 'unlock' and engineStatus == False:
                         syslog.syslog('Remote action found... Unlocking vehicle')
                         returnOut = pushAction('24746C901100\r\n', portName)
-                    elif actions['action'] == 'lock':
+                    elif actions['action'] == 'lock' and engineStatus == False:
                         syslog.syslog('Remote action found... Locking vehicle')
                         returnOut = pushAction('21746C901100\r\n', portName)
      
@@ -276,6 +276,7 @@ def getActions():
                         actionCallbackOutput = urllib2.urlopen(actionCallbackUrl).read()
                         if actionCallbackOutput.find("OK") != -1:
                             syslog.syslog('Marked action as performed')
+                            inAction = 0
                     except:
                         syslog.syslog('Failed to submit completion of action.. trying again')
             except:
@@ -295,31 +296,28 @@ def mainFunction():
             portScan = obd.scanSerial()  # Check if connected and continue, else loop
             while len(portScan) == 0:
                 syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
-                portScan = obd.scanSerial()
                 time.sleep(5)
+                portScan = obd.scanSerial()
             connection = obd.Async()  # Auto connect to obd device
-            # time.sleep(5)  # Sleep 5 seconds to ensure that all AT commands are run correctly
             portName = portScan[0]
 
         syslog.syslog('Connected to '+portName+' successfully')
         # getVehicleInfo(connection)
         # checkCodes(connection)
         # Start watching RPM to see if engine is started
-        obdWatch(connection, 'RPM')  # Start watching RPM
-        connection.start()
-        engineStatus = False 
         while engineStatus is False:
-            checkEngineOn = connection.query(obd.commands.RPM)
-            syslog.syslog('Engine Value: '+str(checkEngineOn.value))
-            if checkEngineOn.value is None:  # Check if we have an RPM value.. if not return false
-                syslog.syslog('Engine is not running, checking again')
-                time.sleep(1)
-                engineStatus = False
-            else:
-                engineStatus = True
-            time.sleep(5)
+            if inAction == 0:  # Don't make me freak out if an action is being launched.
+                obdWatch(connection, 'RPM')  # Start watching RPM
+                connection.start()
+                checkEngineOn = connection.query(obd.commands.RPM)
+                syslog.syslog('Engine RPM: '+str(checkEngineOn.value))
+                if checkEngineOn.value is None:  # Check if we have an RPM value.. if not return false
+                    syslog.syslog('Engine is not running, checking again')
+                    engineStatus = False
+                    dumpObd(connection, 5)
+                else:
+                    engineStatus = True
         syslog.syslog('Engine is started. Kicking off metrics loop..')
-        dumpObd(connection)
         mainLoop(connection, portName, engineStatus)
 
 # Kick off influx threads
@@ -343,4 +341,4 @@ getActionsThread.setDaemon(True)
 getActionsThread.start()
 
 mainFunction()  # Lets kick this stuff off
-influxQueue.join()
+
