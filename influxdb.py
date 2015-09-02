@@ -1,3 +1,7 @@
+#!/usr/bin/python
+#
+# Influxdb push functions and thread
+#
 def pushInflux(influxQueue):
     while True:
         global influxStatus
