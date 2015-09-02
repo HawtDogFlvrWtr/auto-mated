@@ -152,6 +152,7 @@ def pushInflux(influxQueue):
                 syslog.syslog('Debug on.. not pushing to influxdb')
             influxStatus = "    Up"
             metricsSuccess += 1
+            syslog.syslog(influxInfo[1])
             influxQueue.task_done()  # If success, skim that off the top of the queue
         except:  # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
             influxQueue.put(influxQueueGet)
@@ -247,6 +248,8 @@ def getActions():
         time.sleep(5)
 
 def mainFunction():
+    global engineStatus
+    global portName
     while True:
         if debugOn is True:
             portName = '/dev/pts/17'
@@ -255,8 +258,8 @@ def mainFunction():
             portScan = obd.scanSerial()  # Check if connected and continue, else loop
             while len(portScan) == 0:
                 syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
-                time.sleep(5)
                 portScan = obd.scanSerial()
+                time.sleep(1)
             connection = obd.Async()  # Auto connect to obd device
             portName = portScan[0]
 
@@ -264,44 +267,56 @@ def mainFunction():
         # getVehicleInfo(connection)
         # checkCodes(connection)
         # Start watching RPM to see if engine is started
+        obdWatch(connection, 'RPM')  # Start watching RPM
+        connection.start()
+        time.sleep(5)  # Wait for first metric
         while engineStatus is False:
             if inAction == 0:  # Don't make me freak out if an action is being launched.
-                obdWatch(connection, 'RPM')  # Start watching RPM
-                connection.start()
                 checkEngineOn = connection.query(obd.commands.RPM)
                 syslog.syslog('Engine RPM: '+str(checkEngineOn.value))
                 if checkEngineOn.value is None:  # Check if we have an RPM value.. if not return false
                     syslog.syslog('Engine is not running, checking again')
                     engineStatus = False
-                    dumpObd(connection, 5)
+                    dumpObd(connection, 1)
+                    break
                 else:
                     engineStatus = True
-        syslog.syslog('Engine is started. Kicking off metrics loop..')
-        dumpObd(connection, 1)
-        for metrics in metricsArray:
-            if metrics != 'time':
-                obdWatch(connection, metrics)  # Watch all metrics
+        if engineStatus is True:
+            syslog.syslog('Engine is started. Kicking off metrics loop..')
+            dumpObd(connection, 1)
+            for metrics in metricsArray:
+                if metrics != 'time':
+                    obdWatch(connection, metrics)  # Watch all metrics
 
-        connection.start()  # Start async calls now that we're watching PID's
-        time.sleep(5)  # Wait for first metrics to come in.
+            connection.start()  # Start async calls now that we're watching PID's
+            time.sleep(5)  # Wait for first metrics to come in.
 
         # FIX: NEED TO MAKE THIS HIS 01 TO DETERMINE SUPPORTED PID'S
         while engineStatus is True:
             tempValues = []
             timeValue = time.time()
             for metrics in metricsArray:
-                if metrics == 'time':  # Grab current time if metric is asking to provide the time.
-                    value = int(timeValue)
-                else:
-                    value = connection.query(obd.commands[metrics])
-                    value = value.value
-                if metrics == 'RPM' and value is None:  # Dump if RPM is none
+                try:
+                    if metrics == 'time':  # Grab current time if metric is asking to provide the time.
+                        value = int(timeValue)
+                    else:
+                        value = connection.query(obd.commands[metrics])
+                        value = value.value
+                    if metrics == 'RPM' and value is None:  # Dump if RPM is none
+                        dumpObd(connection, 1)
+                        valuesList = str(int(timeValue))+",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on auto-mated.com
+                        influxQueue.put(metricsList+':'+valuesList)
+                        engineStatus = False  # Kill while above
+                        break  # break from FOR if engine is no longer running
+                    else: 
+                        tempValues.append(value)
+                        engineStatus = True  # Stay in While
+                except:
                     dumpObd(connection, 1)
                     valuesList = str(int(timeValue))+",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on auto-mated.com
                     influxQueue.put(metricsList+':'+valuesList)
                     engineStatus = False  # Kill while above
-                    break  # jump from for if engine is no longer running
-                tempValues.append(value)
+                    break  # break from for if engine is no longer running
             valuesList = ','.join([str(x) for x in tempValues])
             influxQueue.put(metricsList+':'+valuesList)  # Dump metrics to influx queue
             time.sleep(1)
