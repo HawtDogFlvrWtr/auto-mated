@@ -27,7 +27,7 @@ obd.debug.console = False
 
 # Setup Influx Queue
 influxQueue = Queue(maxsize=0)
-num_threads = 5 
+num_threads = 2 
 
 # Setting initial global variables
 global engineStatus
@@ -74,8 +74,9 @@ metricsArray = ["time", "RPM", "SPEED", "TIMING_ADVANCE", "INTAKE_TEMP", "THROTT
 metricsList = ','.join([str(x) for x in metricsArray])
 
 def uDisplay():
+    initDisplay()
+    lcdSetContrast(50)  # Universal contrast value for most lcd's
     while True:
-        initDisplay()
         queueSize = influxQueue.qsize()
         timeNow = time.time()
         # Setting up network/metric stuff
@@ -107,7 +108,7 @@ def uDisplay():
             lcdDisplayText(0, 0, "Key:"+vehicleKey)
         lcdDisplayText(0, 8, "BT:"+btStatus)
         lcdDisplayText(0, 16, "ENGINE:"+engineText)
-        lcdDisplayText(0, 32, "NETWORK:"+network)
+        lcdDisplayText(0, 24, "NETWORK:"+network)
         lcdDisplayText(0, 40, "Q:"+str(queueSize)+ " S:"+str(metricsSuccess)+" "+debugMsg)
         lcdDisplay()
         time.sleep(1)
