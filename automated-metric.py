@@ -255,13 +255,11 @@ def mainFunction():
             portName = '/dev/pts/17'
             connection = obd.Async('/dev/pts/17')
         else:
-            portScan = obd.scanSerial()  # Check if connected and continue, else loop
-            while len(portScan) == 0:
+            while len(obd.scanSerial()) == 0:
                 syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
-                portScan = obd.scanSerial()
                 time.sleep(1)
             connection = obd.Async()  # Auto connect to obd device
-            portName = portScan[0]
+            portName = obd.scanSerial()[0] 
 
         syslog.syslog('Connected to '+portName+' successfully')
         # getVehicleInfo(connection)
@@ -278,7 +276,7 @@ def mainFunction():
                     syslog.syslog('Engine is not running, checking again')
                     engineStatus = False
                     dumpObd(connection, 1)
-                    break
+                    break  # Break out of while and attempt to reconnect to the OBD port.. car is probably off!
                 else:
                     engineStatus = True
         if engineStatus is True:
