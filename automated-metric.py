@@ -18,7 +18,7 @@ import os.path
 import string
 import random
 import json
-import serialn
+import serial
 from datetime import datetime
 
 debugOn = False 
