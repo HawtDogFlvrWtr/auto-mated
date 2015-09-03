@@ -18,16 +18,16 @@ import os.path
 import string
 import random
 import json
-import serial
+import serialn
 from datetime import datetime
 
 debugOn = False 
 obd.debug.console = False
-initDisplay()
+
 
 # Setup Influx Queue
 influxQueue = Queue(maxsize=0)
-num_threads = 2 
+num_threads = 5 
 
 # Setting initial global variables
 global engineStatus
@@ -37,10 +37,10 @@ global portName
 portName = None
 
 global networkStatus
-networkStatus = "  Down"
+networkStatus = False
 
 global influxStatus
-influxStatus = "  Down"
+influxStatus = False
 
 global metricSuccess
 metricsSuccess = 0
@@ -75,8 +75,14 @@ metricsList = ','.join([str(x) for x in metricsArray])
 
 def uDisplay():
     while True:
+        initDisplay()
         queueSize = influxQueue.qsize()
         timeNow = time.time()
+        # Setting up network/metric stuff
+        if networkStatus == False and influxStatus == False:
+            network = "  Down"
+        else:
+            network = "    Up"
         # Setting up Engine text
         if engineStatus == False:
             engineText = "   Down"
@@ -94,15 +100,14 @@ def uDisplay():
             debugMsg = " DEBUG"
         else:
             debugMsg = ""
-        if networkStatus == "    Up":
-            lcdDisplayText(0,0, "              ")
-            lcdDisplayText(0,0, "TIME: "+str(time.strftime("%I:%M:%S")))
+        if networkStatus == True:
+            lcdDisplayText(0, 0, "              ")
+            lcdDisplayText(0, 0, "TIME: "+str(time.strftime("%I:%M:%S")))
         else:
             lcdDisplayText(0, 0, "Key:"+vehicleKey)
         lcdDisplayText(0, 8, "BT:"+btStatus)
         lcdDisplayText(0, 16, "ENGINE:"+engineText)
-        lcdDisplayText(0, 24, "NETWORK:"+networkStatus)
-        lcdDisplayText(0, 32, "METRICS:"+influxStatus)
+        lcdDisplayText(0, 32, "NETWORK:"+network)
         lcdDisplayText(0, 40, "Q:"+str(queueSize)+ " S:"+str(metricsSuccess)+" "+debugMsg)
         lcdDisplay()
         time.sleep(1)
@@ -131,10 +136,10 @@ def callBack():
         try:
             urllib2.urlopen("http://www.auto-mated.com/api/callback.php?ping&key="+vehicleKey+"&enginestatus="+engineCallback+"&elmstatus="+elmCallback).read()
             syslog.syslog('Pinging auto-mated.com to let them know we are online')
-            networkStatus = "    Up"
+            networkStatus = True
         except:  # Woops, we have no network connection. 
             syslog.syslog('Unable to ping auto-mated.com as the network appears to be down. Trying again')
-            networkStatus = "  Down"
+            networkStatus = False
         time.sleep(10)
 
 def pushInflux(influxQueue):
@@ -150,15 +155,15 @@ def pushInflux(influxQueue):
                 syslog.syslog('Influxdb Web Return: '+output)
             else:
                 syslog.syslog('Debug on.. not pushing to influxdb')
-            influxStatus = "    Up"
+            influxStatus = True
             metricsSuccess += 1
             syslog.syslog(influxInfo[1])
             influxQueue.task_done()  # If success, skim that off the top of the queue
         except:  # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
             influxQueue.put(influxQueueGet)
             influxQueue.task_done()  # Have to mark it as done anyway, but we roll it back into the Queue. 
-            syslog.syslog('Network connection down, Tossing record back into queue until network is back')
-            influxStatus = "  Down"
+            syslog.syslog('Failed sending metric, Tossing record back into queue and trying again.')
+            influxStatus = False
         time.sleep(1)
     influxQueue.join()
 
@@ -294,11 +299,16 @@ def mainFunction():
         # FIX: NEED TO MAKE THIS HIS 01 TO DETERMINE SUPPORTED PID'S
         while engineStatus is True:
             if os.path.isfile('/tmp/influxback'):  # Check for backup file and push it into the queue for upload.
-                with open('/tmp/influxback') as f:
-                    lines = f.readlines()
-                for line in lines:
-                    influxQueue.put(line)
-                os.remove('/tmp/influxback')  # Kill file after we've dumped them all in the backup. 
+                syslog.syslog('Old metric data file found... Processing')
+                try:
+                    with open('/tmp/influxback') as f:
+                        lines = f.readlines()
+                    for line in lines:
+                        influxQueue.put(line)
+                    os.remove('/tmp/influxback')  # Kill file after we've dumped them all in the backup. 
+                    syslog.syslog('Imported old metric data.')
+                except:
+                    syslog.syslog('Failed while importing old queue')
             tempValues = []
             timeValue = time.time()
             for metrics in metricsArray:
@@ -313,11 +323,15 @@ def mainFunction():
                         valuesList = str(int(timeValue))+",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on auto-mated.com
                         influxQueue.put(metricsList+':'+valuesList)
                         engineStatus = False  # Kill while above
-                        if influxQueue.qsize() > 0 and networkStatus == "  Down":
-                            backupFile = open('/tmp/influxback', 'w')
-                            while influxQueue.qsize() > 0:
-                               backupFile.write(influxQueue.get()+'\r\n')
-                               influxQueue.task_done()
+                        if influxQueue.qsize() > 0 and networkStatus == False:
+                            syslog.syslog('Engine off and network down. Saving queue to file.')
+                            try:
+                                backupFile = open('/tmp/influxback', 'w')
+                                while influxQueue.qsize() > 0:
+                                    backupFile.write(influxQueue.get()+'\r\n')
+                                    influxQueue.task_done()
+                            except:
+                                syslog.syslog('Failed writing queue to file.')
                         break  # break from FOR if engine is no longer running
                     else: 
                         tempValues.append(value)
@@ -327,15 +341,25 @@ def mainFunction():
                     valuesList = str(int(timeValue))+",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on auto-mated.com
                     influxQueue.put(metricsList+':'+valuesList)
                     engineStatus = False  # Kill while above
+                    if influxQueue.qsize() > 0 and networkStatus == False:
+                        syslog.syslog('Engine off and network down. Saving queue to file.')
+                        try:
+                            backupFile = open('/tmp/influxback', 'w')
+                            while influxQueue.qsize() > 0:
+                                backupFile.write(influxQueue.get()+'\r\n')
+                                influxQueue.task_done()
+                        except:
+                            syslog.syslog('Failed writing queue to file.')
                     break  # break from for if engine is no longer running
             valuesList = ','.join([str(x) for x in tempValues])
             influxQueue.put(metricsList+':'+valuesList)  # Dump metrics to influx queue
             time.sleep(1)
 
 # Kick off influx threads
-influxThread = Thread(target=pushInflux, args=(influxQueue,))
-influxThread.setDaemon(True)
-influxThread.start()
+for i in range(num_threads):
+    influxThread = Thread(target=pushInflux, args=(influxQueue,))
+    influxThread.setDaemon(True)
+    influxThread.start()
 
 # Kick off display thread
 displayThread = Thread(target=uDisplay)
