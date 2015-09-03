@@ -255,11 +255,13 @@ def mainFunction():
             portName = '/dev/pts/17'
             connection = obd.Async('/dev/pts/17')
         else:
-            while len(obd.scanSerial()) == 0:
+            scanPort = obd.scanSerial()
+            while len(scanPort) == 0:
                 syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
-                time.sleep(1)
+                time.sleep(5)
+                scanPort = obd.scanSerial()
             connection = obd.Async()  # Auto connect to obd device
-            portName = obd.scanSerial()[0] 
+            portName = scanPort[0] 
 
         syslog.syslog('Connected to '+portName+' successfully')
         # getVehicleInfo(connection)
@@ -291,6 +293,12 @@ def mainFunction():
 
         # FIX: NEED TO MAKE THIS HIS 01 TO DETERMINE SUPPORTED PID'S
         while engineStatus is True:
+            if os.path.isfile('/tmp/influxback'):  # Check for backup file and push it into the queue for upload.
+                with open('/tmp/influxback') as f:
+                    lines = f.readlines()
+                for line in lines:
+                    influxQueue.put(line)
+                os.remove('/tmp/influxback')  # Kill file after we've dumped them all in the backup. 
             tempValues = []
             timeValue = time.time()
             for metrics in metricsArray:
@@ -305,6 +313,11 @@ def mainFunction():
                         valuesList = str(int(timeValue))+",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on auto-mated.com
                         influxQueue.put(metricsList+':'+valuesList)
                         engineStatus = False  # Kill while above
+                        if influxQueue.qsize() > 0 and networkStatus == "  Down":
+                            backupFile = open('/tmp/influxback', 'w')
+                            while influxQueue.qsize() > 0:
+                               backupFile.write(influxQueue.get()+'\r\n')
+                               influxQueue.task_done()
                         break  # break from FOR if engine is no longer running
                     else: 
                         tempValues.append(value)
