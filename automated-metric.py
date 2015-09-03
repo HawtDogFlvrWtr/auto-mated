@@ -27,7 +27,7 @@ initDisplay()
 
 # Setup Influx Queue
 influxQueue = Queue(maxsize=0)
-num_threads = 5
+num_threads = 2 
 
 # Setting initial global variables
 global engineStatus
@@ -342,4 +342,3 @@ getActionsThread.setDaemon(True)
 getActionsThread.start()
 
 mainFunction()  # Lets kick this stuff off
-
