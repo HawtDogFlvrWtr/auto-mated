@@ -80,7 +80,7 @@ def uDisplay():
         queueSize = influxQueue.qsize()
         timeNow = time.time()
         # Setting up network/metric stuff
-        if networkStatus == False and influxStatus == False:
+        if networkStatus == False or influxStatus == False:
             network = "  Down"
         else:
             network = "    Up"
@@ -299,14 +299,16 @@ def mainFunction():
 
         # FIX: NEED TO MAKE THIS HIS 01 TO DETERMINE SUPPORTED PID'S
         while engineStatus is True:
-            if os.path.isfile('/tmp/influxback'):  # Check for backup file and push it into the queue for upload.
+            if os.path.isfile('/opt/influxback'):  # Check for backup file and push it into the queue for upload.
                 syslog.syslog('Old metric data file found... Processing')
                 try:
-                    with open('/tmp/influxback') as f:
+                    with open('/opt/influxback') as f:
                         lines = f.readlines()
                     for line in lines:
+                        syslog.syslog('Save data found importing...')
+                        syslog.syslog(line)
                         influxQueue.put(line)
-                    os.remove('/tmp/influxback')  # Kill file after we've dumped them all in the backup. 
+                    os.remove('/opt/influxback')  # Kill file after we've dumped them all in the backup. 
                     syslog.syslog('Imported old metric data.')
                 except:
                     syslog.syslog('Failed while importing old queue')
@@ -327,9 +329,9 @@ def mainFunction():
                         if influxQueue.qsize() > 0 and networkStatus == False:
                             syslog.syslog('Engine off and network down. Saving queue to file.')
                             try:
-                                backupFile = open('/tmp/influxback', 'w')
-                                while influxQueue.qsize() > 0:
-                                    backupFile.write(influxQueue.get()+'\r\n')
+                                backupFile = open('/opt/influxback', 'w')
+                                while influxQueue.qsize():
+                                    backupFile.write(influxQueue.get()+"\n")
                                     influxQueue.task_done()
                             except:
                                 syslog.syslog('Failed writing queue to file.')
@@ -345,9 +347,9 @@ def mainFunction():
                     if influxQueue.qsize() > 0 and networkStatus == False:
                         syslog.syslog('Engine off and network down. Saving queue to file.')
                         try:
-                            backupFile = open('/tmp/influxback', 'w')
-                            while influxQueue.qsize() > 0:
-                                backupFile.write(influxQueue.get()+'\r\n')
+                            backupFile = open('/opt/influxback', 'w')
+                            while influxQueue.qsize():
+                                backupFile.write(influxQueue.get()+"\n")
                                 influxQueue.task_done()
                         except:
                             syslog.syslog('Failed writing queue to file.')
