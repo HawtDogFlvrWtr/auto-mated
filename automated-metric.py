@@ -10,6 +10,7 @@ import obd
 import sys
 sys.path.append('/usr/local/lib/lcd')
 from lcd import *
+import psutil
 import time
 import urllib2
 import syslog
@@ -77,6 +78,8 @@ def uDisplay():
     initDisplay()
     lcdSetContrast(50)  # Universal contrast value for most lcd's
     while True:
+        cpuload = psutil.cpu_percent()
+        memused = psutil.virtual_memory()
         queueSize = influxQueue.qsize()
         timeNow = time.time()
         # Setting up network/metric stuff
@@ -109,7 +112,10 @@ def uDisplay():
         lcdDisplayText(0, 8, "BT:"+btStatus)
         lcdDisplayText(0, 16, "ENGINE:"+engineText)
         lcdDisplayText(0, 24, "NETWORK:"+network)
-        lcdDisplayText(0, 40, "Q:"+str(queueSize)+ " S:"+str(metricsSuccess)+" "+debugMsg)
+        lcdDisplayText(0, 32, "              ")
+        lcdDisplayText(0, 32, "C:"+str(cpuload).split('.', 1)[0]+"% M:"+str(memused.percent).split('.', 1)[0]+"%")
+        lcdDisplayText(0, 40, "              ")
+        lcdDisplayText(0, 40, "Q:"+str(queueSize)+ " T:"+str(metricsSuccess)+" "+debugMsg)
         lcdDisplay()
         time.sleep(1)
 
