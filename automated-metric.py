@@ -28,7 +28,7 @@ obd.debug.console = False
 
 # Setup Influx Queue
 influxQueue = Queue(maxsize=0)
-num_threads = 2 
+num_threads = 5 
 
 # Setting initial global variables
 global engineStatus
@@ -49,6 +49,7 @@ metricsSuccess = 0
 global vehicleKey
 global inAction
 inAction = 0
+
 
 # Checking if a config file exists, if it doesn't, then create one and fill it.
 configFile = '/etc/uhacknect.conf'
@@ -77,9 +78,12 @@ metricsList = ','.join([str(x) for x in metricsArray])
 def uDisplay():
     initDisplay()
     lcdSetContrast(50)  # Universal contrast value for most lcd's
+    lcdShowLogo()
+    time.sleep(2)
     while True:
         cpuload = psutil.cpu_percent()
         memused = psutil.virtual_memory()
+        rootused = psutil.disk_usage('/')
         queueSize = influxQueue.qsize()
         timeNow = time.time()
         # Setting up network/metric stuff
@@ -113,11 +117,16 @@ def uDisplay():
         lcdDisplayText(0, 16, "ENGINE:"+engineText)
         lcdDisplayText(0, 24, "NETWORK:"+network)
         lcdDisplayText(0, 32, "              ")
-        lcdDisplayText(0, 32, "C:"+str(cpuload).split('.', 1)[0]+"% M:"+str(memused.percent).split('.', 1)[0]+"%")
+        lcdDisplayText(0, 32, "CM/:"+str(cpuload).split('.', 1)[0]+" "+str(memused.percent).split('.', 1)[0]+" "+str(rootused.percent).split('.', 1)[0]+"")
         lcdDisplayText(0, 40, "              ")
-        lcdDisplayText(0, 40, "Q:"+str(queueSize)+ " T:"+str(metricsSuccess)+" "+debugMsg)
+        lcdDisplayText(0, 40, "QT:"+str(queueSize)+ " "+str(metricsSuccess)+" "+debugMsg)
         lcdDisplay()
         time.sleep(1)
+
+# Kick off display thread
+displayThread = Thread(target=uDisplay)
+displayThread.setDaemon(True)
+displayThread.start()
 
 def obdWatch(connection, metric):
     syslog.syslog('Watching: '+metric)
@@ -337,7 +346,7 @@ def mainFunction():
                             try:
                                 backupFile = open('/opt/influxback', 'w')
                                 while influxQueue.qsize():
-                                    backupFile.write(influxQueue.get()+"\n")
+                                    backupFile.write(influxQueue.get()+"\r\n")
                                     influxQueue.task_done()
                             except:
                                 syslog.syslog('Failed writing queue to file.')
@@ -355,7 +364,7 @@ def mainFunction():
                         try:
                             backupFile = open('/opt/influxback', 'w')
                             while influxQueue.qsize():
-                                backupFile.write(influxQueue.get()+"\n")
+                                backupFile.write(influxQueue.get()+"\r\n")
                                 influxQueue.task_done()
                         except:
                             syslog.syslog('Failed writing queue to file.')
@@ -369,11 +378,6 @@ for i in range(num_threads):
     influxThread = Thread(target=pushInflux, args=(influxQueue,))
     influxThread.setDaemon(True)
     influxThread.start()
-
-# Kick off display thread
-displayThread = Thread(target=uDisplay)
-displayThread.setDaemon(True)
-displayThread.start()
 
 # Kick off callback thread
 callbackThread = Thread(target=callBack)
