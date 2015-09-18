@@ -276,11 +276,11 @@ def mainFunction():
             portName = '/dev/pts/17'
             connection = obd.Async('/dev/pts/17')
         else:
-            scanPort = obd.scanSerial()
+            scanPort = []
             while len(scanPort) == 0:
                 syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
-                time.sleep(5)
                 scanPort = obd.scanSerial()
+                time.sleep(5)
             connection = obd.Async()  # Auto connect to obd device
             portName = scanPort[0] 
 
