@@ -301,8 +301,8 @@ def mainFunction():
                     connection.close()
                     engineStatus = True
         if engineStatus is True:
+            connection = obd.Async()
             syslog.syslog('Engine is started. Kicking off metrics loop..')
-            dumpObd(connection, 1)
             for metrics in metricsArray:
                 if metrics != 'time':
                     obdWatch(connection, metrics)  # Watch all metrics
