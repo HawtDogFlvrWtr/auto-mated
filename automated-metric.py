@@ -271,26 +271,23 @@ def getActions():
 def mainFunction():
     global engineStatus
     global portName
+    scanPort = []
     while True:
         if debugOn is True:
             portName = '/dev/pts/17'
-            connection = obd.Async('/dev/pts/17')
+            connection = obd.OBD('/dev/pts/17')
         else:
-            scanPort = []
             while len(scanPort) == 0:
                 syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
                 scanPort = obd.scanSerial()
                 time.sleep(5)
-            connection = obd.Async()  # Auto connect to obd device
+            connection = obd.OBD()  # Auto connect to obd device
             portName = scanPort[0] 
 
         syslog.syslog('Connected to '+portName+' successfully')
         # getVehicleInfo(connection)
         # checkCodes(connection)
         # Start watching RPM to see if engine is started
-        obdWatch(connection, 'RPM')  # Start watching RPM
-        connection.start()
-        time.sleep(5)  # Wait for first metric
         while engineStatus is False:
             if inAction == 0:  # Don't make me freak out if an action is being launched.
                 checkEngineOn = connection.query(obd.commands.RPM)
@@ -301,6 +298,7 @@ def mainFunction():
                     dumpObd(connection, 1)
                     break  # Break out of while and attempt to reconnect to the OBD port.. car is probably off!
                 else:
+                    connection.close()
                     engineStatus = True
         if engineStatus is True:
             syslog.syslog('Engine is started. Kicking off metrics loop..')
