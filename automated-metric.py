@@ -23,9 +23,8 @@ import serial
 from datetime import datetime
 
 debugOn = False 
-obd.debug.console = False
-
-
+obd.debug.console = True
+ 
 # Setup Influx Queue
 influxQueue = Queue(maxsize=0)
 num_threads = 5 
@@ -239,6 +238,7 @@ def getActions():
             data = json.loads(actionOutput)
             try:  # Attempt to push, loop over if no network connection
                 for actions in data:
+                    global inAction
                     inAction = 1
                     if actions['action'] == 'start' and engineStatus == False:
                         syslog.syslog('Remote action found... Starting vehicle')
@@ -252,8 +252,10 @@ def getActions():
                     elif actions['action'] == 'lock' and engineStatus == False:
                         syslog.syslog('Remote action found... Locking vehicle')
                         returnOut = pushAction('21746C901100\r\n', portName)
-     
+                while returnOut.find("OK") == -1:
+                  syslog.syslog("PUSH OUTPUT: "+returnOut)
                 if returnOut.find("OK") != -1:
+                    syslog.syslog("PUSH OUTPUT: "+str(returnOut.find("OK")))
                     try:
                         actionCallbackUrl = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey+"&id="+actions['id']
                         actionCallbackOutput = urllib2.urlopen(actionCallbackUrl).read()
@@ -272,6 +274,7 @@ def mainFunction():
     global engineStatus
     global portName
     while True:
+      if inAction == 0:
         if debugOn is True:
             portName = '/dev/pts/17'
             connection = obd.Async('/dev/pts/17')
@@ -281,30 +284,18 @@ def mainFunction():
                 syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
                 time.sleep(5)
                 scanPort = obd.scanSerial()
-            connection = obd.Async()  # Auto connect to obd device
             portName = scanPort[0] 
+            connection = obd.Async()  # Auto connect to obd device
 
         syslog.syslog('Connected to '+portName+' successfully')
-        # getVehicleInfo(connection)
-        # checkCodes(connection)
-        # Start watching RPM to see if engine is started
-        obdWatch(connection, 'RPM')  # Start watching RPM
-        connection.start()
-        time.sleep(5)  # Wait for first metric
-        while engineStatus is False:
-            if inAction == 0:  # Don't make me freak out if an action is being launched.
-                checkEngineOn = connection.query(obd.commands.RPM)
-                syslog.syslog('Engine RPM: '+str(checkEngineOn.value))
-                if checkEngineOn.value is None:  # Check if we have an RPM value.. if not return false
-                    syslog.syslog('Engine is not running, checking again')
-                    engineStatus = False
-                    dumpObd(connection, 1)
-                    break  # Break out of while and attempt to reconnect to the OBD port.. car is probably off!
-                else:
-                    engineStatus = True
+        weConnected = connection.is_connected()
+        if weConnected is False:
+            engineStatus = False
+            syslog.syslog('Engine not started. Checking again in 5...')
+        else:
+            engineStatus = True
         if engineStatus is True:
             syslog.syslog('Engine is started. Kicking off metrics loop..')
-            dumpObd(connection, 1)
             for metrics in metricsArray:
                 if metrics != 'time':
                     obdWatch(connection, metrics)  # Watch all metrics
@@ -372,6 +363,9 @@ def mainFunction():
             valuesList = ','.join([str(x) for x in tempValues])
             influxQueue.put(metricsList+':'+valuesList)  # Dump metrics to influx queue
             time.sleep(1)
+      else:
+        syslog.syslog("Skipping metrics and engine check because an action is running")
+        time.sleep(5)    
 
 # Kick off influx threads
 for i in range(num_threads):
