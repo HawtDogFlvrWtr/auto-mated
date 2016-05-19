@@ -273,28 +273,37 @@ def getActions():
 def mainFunction():
     global engineStatus
     global portName
+    scanPort = []
     while True:
       if inAction == 0:
         if debugOn is True:
             portName = '/dev/pts/17'
-            connection = obd.Async('/dev/pts/17')
+            connection = obd.OBD('/dev/pts/17')
         else:
-            scanPort = obd.scanSerial()
             while len(scanPort) == 0:
                 syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
-                time.sleep(5)
                 scanPort = obd.scanSerial()
             portName = scanPort[0] 
             connection = obd.Async()  # Auto connect to obd device
 
         syslog.syslog('Connected to '+portName+' successfully')
-        weConnected = connection.is_connected()
-        if weConnected is False:
-            engineStatus = False
-            syslog.syslog('Engine not started. Checking again in 5...')
-        else:
-            engineStatus = True
+        # getVehicleInfo(connection)
+        # checkCodes(connection)
+        # Start watching RPM to see if engine is started
+        while engineStatus is False:
+            if inAction == 0:  # Don't make me freak out if an action is being launched.
+                checkEngineOn = connection.query(obd.commands.RPM)
+                syslog.syslog('Engine RPM: '+str(checkEngineOn.value))
+                if checkEngineOn.value is None:  # Check if we have an RPM value.. if not return false
+                    syslog.syslog('Engine is not running, checking again')
+                    engineStatus = False
+                    dumpObd(connection, 1)
+                    break  # Break out of while and attempt to reconnect to the OBD port.. car is probably off!
+                else:
+                    connection.close()
+                    engineStatus = True
         if engineStatus is True:
+            connection = obd.Async()
             syslog.syslog('Engine is started. Kicking off metrics loop..')
             for metrics in metricsArray:
                 if metrics != 'time':
