@@ -4,7 +4,7 @@
 # 5/1/2015
 #
 
-debugOn = False 
+debugOn = True 
 
 from Queue import Queue
 from threading import Thread
@@ -163,190 +163,184 @@ def obdWatch(connection, acceptedMetrics):
   return metricsArray
 
 def dumpObd(connection, sleepTime):
-    connection.stop()
-    connection.unwatch_all()
-    time.sleep(sleepTime)
+  connection.stop()
+  connection.unwatch_all()
+  time.sleep(sleepTime)
 
 def callBack():
-    while True:
-        if engineStatus is True:
-            engineCallback = '1'
-        else:
-            engineCallback = '0'
+  while True:
+    if engineStatus is True:
+      engineCallback = '1'
+    else:
+      engineCallback = '0'
 
-        if portName is None:
-            elmCallback = '0'
-        else:
-            elmCallback = '1'
-        global networkStatus
-        try:
-            urllib2.urlopen("http://www.auto-mated.com/api/callback.php?ping&key="+vehicleKey+"&enginestatus="+engineCallback+"&elmstatus="+elmCallback).read()
-            syslog.syslog('Pinging auto-mated.com to let them know we are online')
-            networkStatus = True
-        except:  # Woops, we have no network connection. 
-            syslog.syslog('Unable to ping auto-mated.com as the network appears to be down. Trying again')
-            networkStatus = False
-        time.sleep(10)
+    if portName is None:
+      elmCallback = '0'
+    else:
+      elmCallback = '1'
+    global networkStatus
+    try:
+      urllib2.urlopen("http://www.auto-mated.com/api/callback.php?ping&key="+vehicleKey+"&enginestatus="+engineCallback+"&elmstatus="+elmCallback).read()
+      syslog.syslog('Pinging auto-mated.com to let them know we are online')
+      networkStatus = True
+    except:  # Woops, we have no network connection. 
+      syslog.syslog('Unable to ping auto-mated.com as the network appears to be down. Trying again')
+      networkStatus = False
+    time.sleep(10)
 
 def pushInflux(influxQueue):
-    while True:
-        global influxStatus
-        global metricsSuccess
-        influxQueueGet = influxQueue.get()
-        # Attempt to push, loop over if no network connection
-        try:
-            if debugOn is False:
-                syslog.syslog("Pushing to Influxdb")
-                req = urllib2.Request('http://www.auto-mated.com/api/influxPush.php?key='+vehicleKey)
-                req.add_header('Content-Type', 'application/json')
-                response = urllib2.urlopen(req, json.dumps(influxQueueGet))
-            else:
-                syslog.syslog('Debug on.. not pushing to influxdb')
-            influxStatus = True
-            metricsSuccess += 1
-            influxQueue.task_done()  # If success, skim that off the top of the queue
-        except:  # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
-            influxQueue.put(influxQueueGet)
-            influxQueue.task_done()  # Have to mark it as done anyway, but we roll it back into the Queue. 
-            syslog.syslog('Failed sending metric, Tossing record back into queue and trying again.')
-            influxStatus = False
-        time.sleep(0.25)
+  while True:
+    global influxStatus
+    global metricsSuccess
+    influxQueueGet = influxQueue.get()
+    # Attempt to push, loop over if no network connection
+    try:
+      if debugOn is False:
+        syslog.syslog("Pushing to Influxdb")
+        req = urllib2.Request('http://www.auto-mated.com/api/influxPush.php?key='+vehicleKey)
+        req.add_header('Content-Type', 'application/json')
+        response = urllib2.urlopen(req, json.dumps(influxQueueGet))
+      else:
+        syslog.syslog('Debug on.. not pushing to influxdb')
+      influxStatus = True
+      metricsSuccess += 1
+      influxQueue.task_done()  # If success, skim that off the top of the queue
+    except:  # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
+      influxQueue.put(influxQueueGet)
+      influxQueue.task_done()  # Have to mark it as done anyway, but we roll it back into the Queue. 
+      syslog.syslog('Failed sending metric, Tossing record back into queue and trying again.')
+      influxStatus = False
+    time.sleep(0.25)
 
 def checkCodes(connection):
-    syslog.syslog('Checking engine for error codes...')
-    obdQuery(connection, 'GET_DTC')
-    readCodes = connection.query(obd.commands.GET_DTC)
-    print readCodes
+  syslog.syslog('Checking engine for error codes...')
+  obdQuery(connection, 'GET_DTC')
+  readCodes = connection.query(obd.commands.GET_DTC)
+  print readCodes
 
 def getVehicleInfo(connection):
-    syslog.syslog('Getting vehicle information')
-    obdQuery(connection, 'GET_VIN')
-    vinNum = connection.query(obd.commands.GET_VIN)
-    print vinNum
+  syslog.syslog('Getting vehicle information')
+  obdQuery(connection, 'GET_VIN')
+  vinNum = connection.query(obd.commands.GET_VIN)
+  print vinNum
 
 def pushAction(action, portName):
-    attempts = 2
-    buffer = b''
-    s = serial.Serial(portName, baudrate=9600)
-    s.write('ATZ\r\n')
-    time.sleep(1)
-    s.write('STP31\r\n')
-    s.write('ATSH1C0\r\n')
-    s.write(action)
-    s.flush()
-    while True:
-        c = s.read(1)
-        # if nothing was received
-        if not c:
-
-            if attempts <= 0:
-                syslog.syslog('never received prompt character')
-                break
-
-            syslog.syslog('found nothing')
-            attempts -= 1
-            continue
-        # end on chevron (ELM prompt character)
-        if c == b'>':
-            break
-
-        # skip null characters (ELM spec page 9)
-        if c == b'\x00':
-            continue
-
-        buffer += c
-
-    raw = buffer.encode('ascii', 'ignore')
-    return raw
-    s.close()
+  attempts = 2
+  buffer = b''
+  s = serial.Serial(portName, baudrate=9600)
+  s.write('ATZ\r\n')
+  time.sleep(1)
+  for writeData in ['STP31', 'ATSH1C0', action]:
+    w.write(writeData+'\r\n')
+  s.flush()
+  while True:
+    c = s.read(1)
+    # if nothing was received
+    if not c:
+      if attempts <= 0:
+        syslog.syslog('never received prompt character')
+        break
+      syslog.syslog('found nothing')
+      attempts -= 1
+      continue
+    # end on chevron (ELM prompt character)
+    if c == b'>':
+      break
+    # skip null characters (ELM spec page 9)
+    if c == b'\x00':
+      continue
+    buffer += c
+  raw = buffer.encode('ascii', 'ignore')
+  return raw
+  s.close()
 
 def getActions():
-    while True:
-        try:
-            actionURL = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey
-            actionOutput = urllib2.urlopen(actionURL).read()
-            data = json.loads(actionOutput)
-            try:  # Attempt to push, loop over if no network connection
-                for actions in data:
-                    global inAction
-                    inAction = True
-                    if actions['action'] == 'start' and engineStatus == False:
-                        syslog.syslog('Remote action found... Starting vehicle')
-                        returnOut = pushAction('69AA37901100\r\n', portName)
-                    elif actions['action'] == 'stop' and engineStatus == True:
-                        syslog.syslog('Remote action found... Stopping vehicle')
-                        returnOut = pushAction('6AAA37901100\r\n', portName)
-                    elif actions['action'] == 'unlock' and engineStatus == False:
-                        syslog.syslog('Remote action found... Unlocking vehicle')
-                        returnOut = pushAction('24746C901100\r\n', portName)
-                    elif actions['action'] == 'lock' and engineStatus == False:
-                        syslog.syslog('Remote action found... Locking vehicle')
-                        returnOut = pushAction('21746C901100\r\n', portName)
-                while returnOut.find("OK") == -1:
-                  syslog.syslog("PUSH OUTPUT: "+returnOut)
-                if returnOut.find("OK") != -1:
-                    syslog.syslog("PUSH OUTPUT: "+str(returnOut.find("OK")))
-                    try:
-                        actionCallbackUrl = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey+"&id="+actions['id']
-                        actionCallbackOutput = urllib2.urlopen(actionCallbackUrl).read()
-                        if actionCallbackOutput.find("OK") != -1:
-                            syslog.syslog('Marked action as performed')
-                            inAction = False 
-                    except:
-                        syslog.syslog('Failed to submit completion of action.. trying again')
+  while True:
+    try:
+      actionURL = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey
+      actionOutput = urllib2.urlopen(actionURL).read()
+      data = json.loads(actionOutput)
+      try:  # Attempt to push, loop over if no network connection
+        for actions in data:
+          global inAction
+          inAction = True
+          if actions['action'] == 'start' and engineStatus == False:
+            syslog.syslog('Remote action found... Starting vehicle')
+            returnOut = pushAction('69AA37901100', portName)
+          elif actions['action'] == 'stop' and engineStatus == True:
+            syslog.syslog('Remote action found... Stopping vehicle')
+            returnOut = pushAction('6AAA37901100', portName)
+          elif actions['action'] == 'unlock' and engineStatus == False:
+            syslog.syslog('Remote action found... Unlocking vehicle')
+            returnOut = pushAction('24746C901100', portName)
+          elif actions['action'] == 'lock' and engineStatus == False:
+            syslog.syslog('Remote action found... Locking vehicle')
+            returnOut = pushAction('21746C901100', portName)
+        while returnOut.find("OK") == -1:
+          syslog.syslog("PUSH OUTPUT: "+returnOut)
+          if returnOut.find("OK") != -1:
+            syslog.syslog("PUSH OUTPUT: "+str(returnOut.find("OK")))
+            try:
+              actionCallbackUrl = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey+"&id="+actions['id']
+              actionCallbackOutput = urllib2.urlopen(actionCallbackUrl).read()
+              if actionCallbackOutput.find("OK") != -1:
+                syslog.syslog('Marked action as performed')
+                inAction = False 
             except:
-                syslog.syslog('Something failed in actions... will try again in a bit')
-        except:
-            syslog.syslog('No actions to perform')
-        time.sleep(5)
+              syslog.syslog('Failed to submit completion of action.. trying again')
+      except:
+        syslog.syslog('Something failed in actions... will try again in a bit')
+    except:
+      syslog.syslog('No actions to perform')
+    time.sleep(5)
 
 def mainFunction():
-    global engineStatus
-    global portName
-    scanPort = []
-    while True:
-      if inAction is False:
-        if debugOn is True:
-            portName = '/dev/pts/24'
-            connection = obd.OBD(portName)
-        else:
-            while len(scanPort) == 0:
-                syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
-                scanPort = obd.scanSerial()
-            portName = scanPort[0] 
-            connection = obd.OBD(portName)  # Auto connect to obd device
+  global engineStatus
+  global portName
+  scanPort = []
+  while True:
+    if inAction is False:
+      if debugOn is True:
+        portName = '/dev/pts/21'
+        connection = obd.OBD(portName)
+      else:
+        while len(scanPort) == 0:
+          syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
+          scanPort = obd.scanSerial()
+        portName = scanPort[0] 
+        connection = obd.OBD(portName)  # Auto connect to obd device
 
-        syslog.syslog('Connected to '+portName+' successfully')
-        while engineStatus is False and inAction is False:
-          checkEngineOn = connection.query(obd.commands.RPM)
-          syslog.syslog('Engine RPM: '+str(checkEngineOn.value))
-          if checkEngineOn.value is None:  # Check if we have an RPM value.. if not return false
-              syslog.syslog('Engine is not running, checking again')
-              engineStatus = False
-              #break  # Break out of while and attempt to reconnect to the OBD port.. car is probably off!
-          else:
-              connection.close()
-              engineStatus = True
-          time.sleep(5)
-        if engineStatus is True:
-          connection = obd.Async(portName)
-          syslog.syslog('Engine is started. Kicking off metrics loop..')
-          metricsArray = obdWatch(connection, acceptedMetrics)  # Watch all metrics
-          connection.start()  # Start async calls now that we're watching PID's
-          time.sleep(5)  # Wait for first metrics to come in.
-          if os.path.isfile('/opt/influxback'):  # Check for backup file and push it into the queue for upload.
-              syslog.syslog('Old metric data file found... Processing')
-              try:
-                  with open('/opt/influxback') as f:
-                      lines = f.readlines()
-                  for line in lines:
-                      syslog.syslog('Save data found importing...')
-                      syslog.syslog(line)
-                      influxQueue.put(line)
-                  os.remove('/opt/influxback')  # Kill file after we've dumped them all in the backup. 
-                  syslog.syslog('Imported old metric data.')
-              except:
-                  syslog.syslog('Failed while importing old queue')
+      syslog.syslog('Connected to '+portName+' successfully')
+      while engineStatus is False and inAction is False:
+        checkEngineOn = connection.query(obd.commands.RPM)
+        syslog.syslog('Engine RPM: '+str(checkEngineOn.value))
+        if checkEngineOn.value is None:  # Check if we have an RPM value.. if not return false
+          syslog.syslog('Engine is not running, checking again')
+          engineStatus = False
+          #break  # Break out of while and attempt to reconnect to the OBD port.. car is probably off!
+        else:
+          connection.close()
+          engineStatus = True
+        time.sleep(5)
+      if engineStatus is True:
+        connection = obd.Async(portName)
+        syslog.syslog('Engine is started. Kicking off metrics loop..')
+        metricsArray = obdWatch(connection, acceptedMetrics)  # Watch all metrics
+        connection.start()  # Start async calls now that we're watching PID's
+        time.sleep(5)  # Wait for first metrics to come in.
+        if os.path.isfile('/opt/influxback'):  # Check for backup file and push it into the queue for upload.
+          syslog.syslog('Old metric data file found... Processing')
+          try:
+            with open('/opt/influxback') as f:
+              lines = f.readlines()
+            for line in lines:
+              syslog.syslog('Save data found importing...')
+              syslog.syslog(line)
+              influxQueue.put(line)
+            os.remove('/opt/influxback')  # Kill file after we've dumped them all in the backup. 
+            syslog.syslog('Imported old metric data.')
+          except:
+            syslog.syslog('Failed while importing old queue')
 
         while engineStatus is True:
           timeValue = time.time()
@@ -377,16 +371,16 @@ def mainFunction():
             engineStatus = True  # Stay in While
           influxQueue.put(json.dumps(metricDic))  # Dump metrics to influx queue
           time.sleep(1)
-      else:
-        dumpObd(connection, 1)
-        syslog.syslog("Skipping metrics and engine check because an action is running")
-        time.sleep(5)    
+    else:
+      dumpObd(connection, 1)
+      syslog.syslog("Skipping metrics and engine check because an action is running")
+      time.sleep(5)    
 
 # Kick off influx threads
 for i in range(num_threads):
-    influxThread = Thread(target=pushInflux, args=(influxQueue,))
-    influxThread.setDaemon(True)
-    influxThread.start()
+  influxThread = Thread(target=pushInflux, args=(influxQueue,))
+  influxThread.setDaemon(True)
+  influxThread.start()
 
 # Kick off callback thread
 callbackThread = Thread(target=callBack)
