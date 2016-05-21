@@ -4,12 +4,15 @@
 # 5/1/2015
 #
 
+debugOn = False 
+
 from Queue import Queue
 from threading import Thread
 import obd
 import sys
-sys.path.append('/usr/local/lib/lcd')
-from lcd import *
+if debugOn is not True:
+  sys.path.append('/usr/local/lib/lcd')
+  from lcd import *
 import psutil
 import time
 import urllib2
@@ -22,8 +25,8 @@ import json
 import serial
 from datetime import datetime
 
-debugOn = False 
-obd.debug.console = True
+obd.debug.console = False 
+
  
 # Setup Influx Queue
 influxQueue = Queue(maxsize=0)
@@ -47,7 +50,7 @@ metricsSuccess = 0
 
 global vehicleKey
 global inAction
-inAction = 0
+inAction = False
 
 
 # Checking if a config file exists, if it doesn't, then create one and fill it.
@@ -71,10 +74,29 @@ else:
     cfgFile.close()
 
 mainHost = "http://www.auto-mated.com/api/influxPush.php?key="+vehicleKey+"&metric="
-metricsArray = ["time", "RPM", "SPEED", "TIMING_ADVANCE", "INTAKE_TEMP", "THROTTLE_POS", "MAF", "RUN_TIME", "FUEL_LEVEL", "COOLANT_TEMP", "ENGINE_LOAD", "FUEL_PRESSURE", "INTAKE_PRESSURE", "AMBIANT_AIR_TEMP", "OIL_TEMP"]
-metricsList = ','.join([str(x) for x in metricsArray])
+acceptedMetrics = {'03': 'FUEL_STATUS', '04': 'ENGINE_LOAD', '05': 'COOLANT_TEMP', '06': 'SHORT_FUEL_TRIM_1',
+                   '07': 'LONG_FUEL_TRIM_1', '08': 'SHORT_FUEL_TRIM_2', '09': 'LONG_FUEL_TRIM_2', '0A': 'FUEL_PRESSURE',
+                   '0B': 'INTAKE_PRESSURE', '0C': 'RPM', '0D': 'SPEED', '0E': 'TIMING_ADVANCE', '0F': 'INTAKE_TEMP',
+                   '10': 'MAF', '11': 'THROTTLE_POS', '12': 'AIR_STATUS', '13': 'O2_SENSORS', '14': 'O2_B1S1',
+                   '15': 'O2_B1S2', '16': 'O2_B1S3', '17': 'O2_B1S4', '18': 'O2_B2S1', '19': 'O2_B2S2', '1A': 'O2_B2S3',
+                   '1B': 'O2_B2S4', '1D': 'O2_SENSORS_ALT', '21': 'DISTANCE_W_MIL', '22': 'FUEL_RAIL_PRESSURE_VAC',
+                   '23': 'FUEL_RAIL_PRESSURE_DIRECT', '24': 'O2_S1_WR_VOLTAGE', '25': 'O2_S2_WR_VOLTAGE',
+                   '26': 'O2_S3_WR_VOLTAGE', '27': 'O2_S4_WR_VOLTAGE', '28': 'O2_S5_WR_VOLTAGE', '29': 'O2_S6_WR_VOLTAGE',
+                   '2A': 'O2_S7_WR_VOLTAGE', '2B': 'O2_S8_WR_VOLTAGE', '2F': 'FUEL_LEVEL', '31': 'DISTANCE_SINCE_DTC_CLEAR',
+                   '33': 'BAROMETRIC_PRESSURE', '34': 'O2_S1_WR_CURRENT', '35': 'O2_S2_WR_CURRENT',
+                   '36': 'O2_S3_WR_CURRENT', '37': 'O2_S4_WR_CURRENT', '38': 'O2_S5_WR_CURRENT', '39': 'O2_S6_WR_CURRENT',
+                   '3A': 'O2_S7_WR_CURRENT', '3B': 'O2_S8_WR_CURRENT', '3C': 'CATALYST_TEMP_B1S1', '3D': 'CATALYST_TEMP_B2S1',
+                   '3E': 'CATALYST_TEMP_B1S2', '3F': 'CATALYST_TEMP_B2S2', '41': 'STATUS_DRIVE_CYCLE', '42': 'CONTROL_MODULE_VOLTAGE',
+                   '43': 'ABSOLUTE_LOAD', '44': 'COMMAND_EQUIV_RATIO', '45': 'RELATIVE_THROTTLE_POS', '46': 'AMBIANT_AIR_TEMP',
+                   '4B': 'ACCELERATOR_POS_F', '4C': 'THROTTLE_ACTUATOR', '4D': 'RUN_TIME_MIL', '4E': 'TIME_SINCE_DTC_CLEARED',
+                   '51': 'FUEL_TYPE', '52': 'ETHANOL_PERCENT', '53': 'EVAP_VAPOR_PRESSURE_ABS', '54': 'EVAP_VAPOR_PRESSURE_ALT',
+                   '55': 'SHORT_O2_TRIM_B1', '56': 'LONG_O2_TRIM_B1', '57': 'SHORT_O2_TRIM_B2', '58': 'LONG_O2_TRIM_B2',
+                   '59': 'FUEL_RAIL_PRESSURE_ABS', '5A': 'RELATIVE_ACCEL_POS', '5B': 'HYBRID_BATTERY_REMAINING',
+                   '5C': 'OIL_TEMP', '5D': 'FUEL_INJECT_TIMING', '5E': 'FUEL_RATE', '5F': 'EMISSION_REQ'
+                  }
 
 def uDisplay():
+  if debugOn is not True:
     initDisplay()
     lcdSetContrast(50)  # Universal contrast value for most lcd's
     lcdShowLogo()
@@ -103,11 +125,11 @@ def uDisplay():
             btStatus = "         Up"
 
         # Setup debug
-        if debugOn == True:
+        if debugOn is True:
             debugMsg = " DEBUG"
         else:
             debugMsg = ""
-        if networkStatus == True:
+        if networkStatus is True:
             lcdDisplayText(0, 0, "              ")
             lcdDisplayText(0, 0, "TIME: "+str(time.strftime("%I:%M:%S")))
         else:
@@ -127,9 +149,18 @@ displayThread = Thread(target=uDisplay)
 displayThread.setDaemon(True)
 displayThread.start()
 
-def obdWatch(connection, metric):
-    syslog.syslog('Watching: '+metric)
-    connection.watch(obd.commands[metric])  # loop through each
+def obdWatch(connection, acceptedMetrics):
+  metricsArray = []
+  for supported in connection.supported_commands:
+    supported = str(supported)
+    if supported[:2] == "01":
+      supported = supported.split(":")[0][2:]
+      if acceptedMetrics.get(supported, None) is not None:
+        metricsArray.append(acceptedMetrics.get(supported, None))
+  for metric in metricsArray:
+    syslog.syslog("Adding: "+str(metric))
+    connection.watch(obd.commands[metric])
+  return metricsArray
 
 def dumpObd(connection, sleepTime):
     connection.stop()
@@ -138,7 +169,7 @@ def dumpObd(connection, sleepTime):
 
 def callBack():
     while True:
-        if engineStatus == True:
+        if engineStatus is True:
             engineCallback = '1'
         else:
             engineCallback = '0'
@@ -162,25 +193,24 @@ def pushInflux(influxQueue):
         global influxStatus
         global metricsSuccess
         influxQueueGet = influxQueue.get()
-        influxInfo = influxQueueGet.split(':')
         # Attempt to push, loop over if no network connection
         try:
             if debugOn is False:
-                output = urllib2.urlopen(mainHost+influxInfo[0]+"&values="+influxInfo[1]).read()
-                syslog.syslog('Influxdb Web Return: '+output)
+                syslog.syslog("Pushing to Influxdb")
+                req = urllib2.Request('http://www.auto-mated.com/api/influxPush.php?key='+vehicleKey)
+                req.add_header('Content-Type', 'application/json')
+                response = urllib2.urlopen(req, json.dumps(influxQueueGet))
             else:
                 syslog.syslog('Debug on.. not pushing to influxdb')
             influxStatus = True
             metricsSuccess += 1
-            syslog.syslog(influxInfo[1])
             influxQueue.task_done()  # If success, skim that off the top of the queue
         except:  # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
             influxQueue.put(influxQueueGet)
             influxQueue.task_done()  # Have to mark it as done anyway, but we roll it back into the Queue. 
             syslog.syslog('Failed sending metric, Tossing record back into queue and trying again.')
             influxStatus = False
-        time.sleep(1)
-    influxQueue.join()
+        time.sleep(0.25)
 
 def checkCodes(connection):
     syslog.syslog('Checking engine for error codes...')
@@ -239,7 +269,7 @@ def getActions():
             try:  # Attempt to push, loop over if no network connection
                 for actions in data:
                     global inAction
-                    inAction = 1
+                    inAction = True
                     if actions['action'] == 'start' and engineStatus == False:
                         syslog.syslog('Remote action found... Starting vehicle')
                         returnOut = pushAction('69AA37901100\r\n', portName)
@@ -261,7 +291,7 @@ def getActions():
                         actionCallbackOutput = urllib2.urlopen(actionCallbackUrl).read()
                         if actionCallbackOutput.find("OK") != -1:
                             syslog.syslog('Marked action as performed')
-                            inAction = 0
+                            inAction = False 
                     except:
                         syslog.syslog('Failed to submit completion of action.. trying again')
             except:
@@ -275,104 +305,80 @@ def mainFunction():
     global portName
     scanPort = []
     while True:
-      if inAction == 0:
+      if inAction is False:
         if debugOn is True:
-            portName = '/dev/pts/17'
-            connection = obd.OBD('/dev/pts/17')
+            portName = '/dev/pts/24'
+            connection = obd.OBD(portName)
         else:
             while len(scanPort) == 0:
                 syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
                 scanPort = obd.scanSerial()
             portName = scanPort[0] 
-            connection = obd.Async()  # Auto connect to obd device
+            connection = obd.OBD(portName)  # Auto connect to obd device
 
         syslog.syslog('Connected to '+portName+' successfully')
-        # getVehicleInfo(connection)
-        # checkCodes(connection)
-        # Start watching RPM to see if engine is started
-        while engineStatus is False:
-            if inAction == 0:  # Don't make me freak out if an action is being launched.
-                checkEngineOn = connection.query(obd.commands.RPM)
-                syslog.syslog('Engine RPM: '+str(checkEngineOn.value))
-                if checkEngineOn.value is None:  # Check if we have an RPM value.. if not return false
-                    syslog.syslog('Engine is not running, checking again')
-                    engineStatus = False
-                    dumpObd(connection, 1)
-                    break  # Break out of while and attempt to reconnect to the OBD port.. car is probably off!
-                else:
-                    connection.close()
-                    engineStatus = True
+        while engineStatus is False and inAction is False:
+          checkEngineOn = connection.query(obd.commands.RPM)
+          syslog.syslog('Engine RPM: '+str(checkEngineOn.value))
+          if checkEngineOn.value is None:  # Check if we have an RPM value.. if not return false
+              syslog.syslog('Engine is not running, checking again')
+              engineStatus = False
+              #break  # Break out of while and attempt to reconnect to the OBD port.. car is probably off!
+          else:
+              connection.close()
+              engineStatus = True
+          time.sleep(5)
         if engineStatus is True:
-            connection = obd.Async()
-            syslog.syslog('Engine is started. Kicking off metrics loop..')
-            for metrics in metricsArray:
-                if metrics != 'time':
-                    obdWatch(connection, metrics)  # Watch all metrics
+          connection = obd.Async(portName)
+          syslog.syslog('Engine is started. Kicking off metrics loop..')
+          metricsArray = obdWatch(connection, acceptedMetrics)  # Watch all metrics
+          connection.start()  # Start async calls now that we're watching PID's
+          time.sleep(5)  # Wait for first metrics to come in.
+          if os.path.isfile('/opt/influxback'):  # Check for backup file and push it into the queue for upload.
+              syslog.syslog('Old metric data file found... Processing')
+              try:
+                  with open('/opt/influxback') as f:
+                      lines = f.readlines()
+                  for line in lines:
+                      syslog.syslog('Save data found importing...')
+                      syslog.syslog(line)
+                      influxQueue.put(line)
+                  os.remove('/opt/influxback')  # Kill file after we've dumped them all in the backup. 
+                  syslog.syslog('Imported old metric data.')
+              except:
+                  syslog.syslog('Failed while importing old queue')
 
-            connection.start()  # Start async calls now that we're watching PID's
-            time.sleep(5)  # Wait for first metrics to come in.
-
-        # FIX: NEED TO MAKE THIS HIS 01 TO DETERMINE SUPPORTED PID'S
         while engineStatus is True:
-            if os.path.isfile('/opt/influxback'):  # Check for backup file and push it into the queue for upload.
-                syslog.syslog('Old metric data file found... Processing')
-                try:
-                    with open('/opt/influxback') as f:
-                        lines = f.readlines()
-                    for line in lines:
-                        syslog.syslog('Save data found importing...')
-                        syslog.syslog(line)
-                        influxQueue.put(line)
-                    os.remove('/opt/influxback')  # Kill file after we've dumped them all in the backup. 
-                    syslog.syslog('Imported old metric data.')
-                except:
-                    syslog.syslog('Failed while importing old queue')
-            tempValues = []
-            timeValue = time.time()
-            for metrics in metricsArray:
-                try:
-                    if metrics == 'time':  # Grab current time if metric is asking to provide the time.
-                        value = int(timeValue)
-                    else:
-                        value = connection.query(obd.commands[metrics])
-                        value = value.value
-                    if metrics == 'RPM' and value is None:  # Dump if RPM is none
-                        dumpObd(connection, 1)
-                        valuesList = str(int(timeValue))+",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on auto-mated.com
-                        influxQueue.put(metricsList+':'+valuesList)
-                        engineStatus = False  # Kill while above
-                        if influxQueue.qsize() > 0 and networkStatus == False:
-                            syslog.syslog('Engine off and network down. Saving queue to file.')
-                            try:
-                                backupFile = open('/opt/influxback', 'w')
-                                while influxQueue.qsize():
-                                    backupFile.write(influxQueue.get()+"\r\n")
-                                    influxQueue.task_done()
-                            except:
-                                syslog.syslog('Failed writing queue to file.')
-                        break  # break from FOR if engine is no longer running
-                    else: 
-                        tempValues.append(value)
-                        engineStatus = True  # Stay in While
-                except:
-                    dumpObd(connection, 1)
-                    valuesList = str(int(timeValue))+",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"  # Push empty values so that gauges reset back to zero on auto-mated.com
-                    influxQueue.put(metricsList+':'+valuesList)
-                    engineStatus = False  # Kill while above
-                    if influxQueue.qsize() > 0 and networkStatus == False:
-                        syslog.syslog('Engine off and network down. Saving queue to file.')
-                        try:
-                            backupFile = open('/opt/influxback', 'w')
-                            while influxQueue.qsize():
-                                backupFile.write(influxQueue.get()+"\r\n")
-                                influxQueue.task_done()
-                        except:
-                            syslog.syslog('Failed writing queue to file.')
-                    break  # break from for if engine is no longer running
-            valuesList = ','.join([str(x) for x in tempValues])
-            influxQueue.put(metricsList+':'+valuesList)  # Dump metrics to influx queue
-            time.sleep(1)
+          timeValue = time.time()
+          metricDic = {}
+          for metricName in metricsArray:
+            value = connection.query(obd.commands[metricName])
+            currentTime = time.time()
+            metricDic.update({'time': currentTime})
+            metricDic.update({metricName: value.value})
+          if metricDic.get('RPM', None) is None:  # Dump if RPM is none
+            dumpObd(connection, 1)
+            for metric in metricDic:
+              if metric != 'time':
+                metricDic.update({metric: 0})
+            influxQueue.put(json.dumps(metricDic))
+            engineStatus = False  # Kill while above
+            if influxQueue.qsize() > 0 and networkStatus == False:
+              syslog.syslog('Engine off and network down. Saving queue to file.')
+              try:
+                backupFile = open('/opt/influxback', 'w')
+                while influxQueue.qsize():
+                  backupFile.write(influxQueue.get()+"\r\n")
+                  influxQueue.task_done()
+              except:
+                syslog.syslog('Failed writing queue to file.')
+            break  # break from FOR if engine is no longer running
+          else: 
+            engineStatus = True  # Stay in While
+          influxQueue.put(json.dumps(metricDic))  # Dump metrics to influx queue
+          time.sleep(1)
       else:
+        dumpObd(connection, 1)
         syslog.syslog("Skipping metrics and engine check because an action is running")
         time.sleep(5)    
 
