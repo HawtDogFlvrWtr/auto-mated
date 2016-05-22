@@ -242,7 +242,7 @@ def pushAction(action, portName):
   s.write('ATZ\r\n')
   time.sleep(1)
   for writeData in ['STP31', 'ATSH1C0', action]:
-    w.write(writeData+'\r\n')
+    s.write(writeData+'\r\n')
   s.flush()
   while True:
     c = s.read(1)
@@ -385,7 +385,8 @@ def mainFunction():
           influxQueue.put(json.dumps(metricDic))  # Dump metrics to influx queue
           time.sleep(1)
     else:
-      dumpObd(connection, 1)
+      if engineStatus is True:
+        dumpObd(connection, 1)
       syslog.syslog("Skipping metrics and engine check because an action is running")
       time.sleep(5)    
 
