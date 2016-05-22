@@ -118,7 +118,6 @@ def uDisplay():
       memused = psutil.virtual_memory()
       rootused = psutil.disk_usage('/')
       queueSize = influxQueue.qsize()
-      timeNow = time.time()
       # Setting up network/metric stuff
       if networkStatus is False:
         network = "  Down"
@@ -268,43 +267,44 @@ def pushAction(action, portName):
 
 def getActions():
   while True:
-    try:
-      actionURL = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey
-      actionOutput = urllib2.urlopen(actionURL).read()
-      data = json.loads(actionOutput)
-      try:  # Attempt to push, loop over if no network connection
-        for actions in data:
-          global inAction
-          inAction = True
-          if actions['action'] == 'start' and engineStatus == False:
-            syslog.syslog('Remote action found... Starting vehicle')
-            returnOut = pushAction('69AA37901100', portName)
-          elif actions['action'] == 'stop' and engineStatus == True:
-            syslog.syslog('Remote action found... Stopping vehicle')
-            returnOut = pushAction('6AAA37901100', portName)
-          elif actions['action'] == 'unlock' and engineStatus == False:
-            syslog.syslog('Remote action found... Unlocking vehicle')
-            returnOut = pushAction('24746C901100', portName)
-          elif actions['action'] == 'lock' and engineStatus == False:
-            syslog.syslog('Remote action found... Locking vehicle')
-            returnOut = pushAction('21746C901100', portName)
-        while returnOut.find("OK") == -1:
-          syslog.syslog("PUSH OUTPUT: "+returnOut)
-          if returnOut.find("OK") != -1:
-            syslog.syslog("PUSH OUTPUT: "+str(returnOut.find("OK")))
-            try:
-              actionCallbackUrl = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey+"&id="+actions['id']
-              actionCallbackOutput = urllib2.urlopen(actionCallbackUrl).read()
-              if actionCallbackOutput.find("OK") != -1:
-                syslog.syslog('Marked action as performed')
-                inAction = False 
-            except:
-              syslog.syslog('Failed to submit completion of action.. trying again')
+    if portName is not None:
+      try:
+        actionURL = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey
+        actionOutput = urllib2.urlopen(actionURL).read()
+        data = json.loads(actionOutput)
+        try:  # Attempt to push, loop over if no network connection
+          for actions in data:
+            global inAction
+            inAction = True
+            if actions['action'] == 'start' and engineStatus == False:
+              syslog.syslog('Remote action found... Starting vehicle')
+              returnOut = pushAction('69AA37901100', portName)
+            elif actions['action'] == 'stop' and engineStatus == True:
+              syslog.syslog('Remote action found... Stopping vehicle')
+              returnOut = pushAction('6AAA37901100', portName)
+            elif actions['action'] == 'unlock' and engineStatus == False:
+              syslog.syslog('Remote action found... Unlocking vehicle')
+              returnOut = pushAction('24746C901100', portName)
+            elif actions['action'] == 'lock' and engineStatus == False:
+              syslog.syslog('Remote action found... Locking vehicle')
+              returnOut = pushAction('21746C901100', portName)
+          while returnOut.find("OK") == -1:
+            syslog.syslog("PUSH OUTPUT: "+returnOut)
+            if returnOut.find("OK") != -1:
+              syslog.syslog("PUSH OUTPUT: "+str(returnOut.find("OK")))
+              try:
+                actionCallbackUrl = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey+"&id="+actions['id']
+                actionCallbackOutput = urllib2.urlopen(actionCallbackUrl).read()
+                if actionCallbackOutput.find("OK") != -1:
+                  syslog.syslog('Marked action as performed')
+                  inAction = False 
+              except:
+                syslog.syslog('Failed to submit completion of action.. trying again')
+        except:
+          syslog.syslog('Something failed in actions... will try again in a bit')
       except:
-        syslog.syslog('Something failed in actions... will try again in a bit')
-    except:
-      syslog.syslog('No actions to perform')
-    time.sleep(5)
+        syslog.syslog('No actions to perform')
+      time.sleep(5)
 
 def mainFunction():
   global engineStatus
