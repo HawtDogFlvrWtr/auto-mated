@@ -218,6 +218,7 @@ def pushInflux(influxQueue):
         req.add_header('Content-Type', 'application/json')
         response = urllib2.urlopen(req, json.dumps(influxQueueGet))
       else:
+	print(influxQueueGet)
         outLog('Debug on.. not pushing to influxdb')
       influxStatus = True
       metricsSuccess += 1
@@ -319,7 +320,7 @@ def mainFunction():
   while True:
     if inAction is False:
       if debugOn is True:
-        portName = '/dev/pts/21'
+        portName = '/dev/pts/23'
         connection = obd.OBD(portName)
       else:
         while len(scanPort) == 0:
@@ -328,16 +329,17 @@ def mainFunction():
           time.sleep(5)
         portName = scanPort[0] 
         connection = obd.OBD(portName)  # Auto connect to obd device
-
+      time.sleep(2)
       outLog('Connected to '+portName+' successfully')
       while engineStatus is False and inAction is False:
         checkEngineOn = connection.query(obd.commands.RPM)
         outLog('Engine RPM: '+str(checkEngineOn.value))
-        if checkEngineOn.value is None:  # Check if we have an RPM value.. if not return false
+        if checkEngineOn.is_null():  # Check if we have an RPM value.. if not return false
           outLog('Engine is not running, checking again')
           engineStatus = False
+          if not connection.is_connected():
+            break  # Break out of while and attempt to reconnect to the OBD port.. car is probably off! ( THIS MAY BE MAKING THE DISPLAY TURN ON AND OFF IN THE CAR)
           time.sleep(5)
-          #break  # Break out of while and attempt to reconnect to the OBD port.. car is probably off! ( THIS MAY BE MAKING THE DISPLAY TURN ON AND OFF IN THE CAR)
         else:
           connection.close()
           engineStatus = True
@@ -362,11 +364,10 @@ def mainFunction():
             outLog('Failed while importing old queue')
 
         while engineStatus is True:
-          timeValue = time.time()
           metricDic = {}
+          currentTime = time.time()
           for metricName in metricsArray:
             value = connection.query(obd.commands[metricName])
-            currentTime = time.time()
             metricDic.update({'time': currentTime})
             metricDic.update({metricName: value.value})
           if metricDic.get('RPM') is None:  # Dump if RPM is none
@@ -381,7 +382,7 @@ def mainFunction():
               outLog('Engine off and network down. Saving queue to file.')
               try:
                 backupFile = open('/opt/influxback', 'w')
-                while influxQueue.qsize():
+                while influxQueue.qsize() > 0:
                   backupFile.write(influxQueue.get()+"\r\n")
                   influxQueue.task_done()
               except:
