@@ -4,7 +4,7 @@
 # 5/1/2015
 #
 
-debugOn = True 
+debugOn = False 
 
 from Queue import Queue
 from threading import Thread
@@ -24,6 +24,7 @@ import random
 import json
 import serial
 from datetime import datetime
+from netifaces import interfaces, ifaddresses, AF_INET
 
 obd.debug.console = False 
 
@@ -95,6 +96,17 @@ acceptedMetrics = {'03': 'FUEL_STATUS', '04': 'ENGINE_LOAD', '05': 'COOLANT_TEMP
                    '5C': 'OIL_TEMP', '5D': 'FUEL_INJECT_TIMING', '5E': 'FUEL_RATE', '5F': 'EMISSION_REQ'
                   }
 
+def ip4_addresses():
+  ip_list = []
+  for interface in interfaces():
+    try:
+      for link in ifaddresses(interface)[AF_INET]:
+        if link['addr'] != '127.0.0.1':
+          ip_list.append(link['addr'])
+    except:
+      syslog.syslog("Interface: "+interface+" issue")
+  return ip_list
+
 def uDisplay():
   if debugOn is not True:
     initDisplay()
@@ -102,47 +114,47 @@ def uDisplay():
     lcdShowLogo()
     time.sleep(2)
     while True:
-        cpuload = psutil.cpu_percent()
-        memused = psutil.virtual_memory()
-        rootused = psutil.disk_usage('/')
-        queueSize = influxQueue.qsize()
-        timeNow = time.time()
-        # Setting up network/metric stuff
-        if networkStatus == False or influxStatus == False:
-            network = "  Down"
-        else:
-            network = "    Up"
-        # Setting up Engine text
-        if engineStatus == False:
-            engineText = "   Down"
-        else:
-            engineText = "     Up"
+      cpuload = psutil.cpu_percent()
+      memused = psutil.virtual_memory()
+      rootused = psutil.disk_usage('/')
+      queueSize = influxQueue.qsize()
+      timeNow = time.time()
+      # Setting up network/metric stuff
+      if networkStatus is False:
+        network = "  Down"
+      else:
+        network = "    Up"
+      # Setting up Engine text
+      if engineStatus is False:
+        engineText = "   Down"
+      else:
+        engineText = "     Up"
   
-        # Setting up BT Text
-        if portName is None:
-            btStatus = "       Down"
-        else:
-            btStatus = "         Up"
+      # Setting up BT Text
+      if portName is None:
+        btStatus = "      Down"
+      else:
+        btStatus = "        Up"
 
-        # Setup debug
-        if debugOn is True:
-            debugMsg = " DEBUG"
-        else:
-            debugMsg = ""
-        if networkStatus is True:
-            lcdDisplayText(0, 0, "              ")
-            lcdDisplayText(0, 0, "TIME: "+str(time.strftime("%I:%M:%S")))
-        else:
-            lcdDisplayText(0, 0, "Key:"+vehicleKey)
-        lcdDisplayText(0, 8, "BT:"+btStatus)
-        lcdDisplayText(0, 16, "ENGINE:"+engineText)
-        lcdDisplayText(0, 24, "NETWORK:"+network)
-        lcdDisplayText(0, 32, "              ")
-        lcdDisplayText(0, 32, "CM/:"+str(cpuload).split('.', 1)[0]+" "+str(memused.percent).split('.', 1)[0]+" "+str(rootused.percent).split('.', 1)[0]+"")
-        lcdDisplayText(0, 40, "              ")
-        lcdDisplayText(0, 40, "QT:"+str(queueSize)+ " "+str(metricsSuccess)+" "+debugMsg)
-        lcdDisplay()
-        time.sleep(1)
+      # Setup debug
+      if debugOn is True:
+        debugMsg = " DEBUG"
+      else:
+        debugMsg = ""
+      if networkStatus is True:
+        lcdDisplayText(0, 0, "              ")
+        lcdDisplayText(0, 0, ip4_addresses()[0])
+      else:
+        lcdDisplayText(0, 0, "Key:"+vehicleKey)
+      lcdDisplayText(0, 8, "OBD:"+btStatus)
+      lcdDisplayText(0, 16, "ENGINE:"+engineText)
+      lcdDisplayText(0, 24, "NETWORK:"+network)
+      lcdDisplayText(0, 32, "              ")
+      lcdDisplayText(0, 32, "CM/:"+str(cpuload).split('.', 1)[0]+" "+str(memused.percent).split('.', 1)[0]+" "+str(rootused.percent).split('.', 1)[0]+"")
+      lcdDisplayText(0, 40, "              ")
+      lcdDisplayText(0, 40, "QT:"+str(queueSize)+ " "+str(metricsSuccess)+" "+debugMsg)
+      lcdDisplay()
+      time.sleep(1)
 
 # Kick off display thread
 displayThread = Thread(target=uDisplay)
@@ -306,7 +318,8 @@ def mainFunction():
       else:
         while len(scanPort) == 0:
           syslog.syslog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
-          scanPort = obd.scanSerial()
+          scanPort = obd.scan_serial()
+          time.sleep(5)
         portName = scanPort[0] 
         connection = obd.OBD(portName)  # Auto connect to obd device
 
