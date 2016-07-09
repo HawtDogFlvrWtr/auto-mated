@@ -23,6 +23,7 @@ import string
 import random
 import json
 import serial
+import requests
 from datetime import datetime
 from netifaces import interfaces, ifaddresses, AF_INET
 
@@ -53,6 +54,11 @@ global vehicleKey
 global inAction
 inAction = False
 
+def outLog(logLine):
+  if debugOn is True:
+    print(logLine)
+  else:
+    print(logLine)
 
 # Checking if a config file exists, if it doesn't, then create one and fill it.
 configFile = '/etc/uhacknect.conf'
@@ -74,7 +80,6 @@ else:
         outLog("Failed writing config to "+configFile+".")
     cfgFile.close()
 
-mainHost = "http://www.auto-mated.com/api/influxPush.php?key="+vehicleKey+"&metric="
 acceptedMetrics = {'03': 'FUEL_STATUS', '04': 'ENGINE_LOAD', '05': 'COOLANT_TEMP', '06': 'SHORT_FUEL_TRIM_1',
                    '07': 'LONG_FUEL_TRIM_1', '08': 'SHORT_FUEL_TRIM_2', '09': 'LONG_FUEL_TRIM_2', '0A': 'FUEL_PRESSURE',
                    '0B': 'INTAKE_PRESSURE', '0C': 'RPM', '0D': 'SPEED', '0E': 'TIMING_ADVANCE', '0F': 'INTAKE_TEMP',
@@ -90,7 +95,7 @@ acceptedMetrics = {'03': 'FUEL_STATUS', '04': 'ENGINE_LOAD', '05': 'COOLANT_TEMP
                    '3E': 'CATALYST_TEMP_B1S2', '3F': 'CATALYST_TEMP_B2S2', '41': 'STATUS_DRIVE_CYCLE', '42': 'CONTROL_MODULE_VOLTAGE',
                    '43': 'ABSOLUTE_LOAD', '44': 'COMMAND_EQUIV_RATIO', '45': 'RELATIVE_THROTTLE_POS', '46': 'AMBIANT_AIR_TEMP',
                    '4B': 'ACCELERATOR_POS_F', '4C': 'THROTTLE_ACTUATOR', '4D': 'RUN_TIME_MIL', '4E': 'TIME_SINCE_DTC_CLEARED',
-                   '51': 'FUEL_TYPE', '52': 'ETHANOL_PERCENT', '53': 'EVAP_VAPOR_PRESSURE_ABS', '54': 'EVAP_VAPOR_PRESSURE_ALT',
+                   '52': 'ETHANOL_PERCENT', '53': 'EVAP_VAPOR_PRESSURE_ABS', '54': 'EVAP_VAPOR_PRESSURE_ALT',
                    '55': 'SHORT_O2_TRIM_B1', '56': 'LONG_O2_TRIM_B1', '57': 'SHORT_O2_TRIM_B2', '58': 'LONG_O2_TRIM_B2',
                    '59': 'FUEL_RAIL_PRESSURE_ABS', '5A': 'RELATIVE_ACCEL_POS', '5B': 'HYBRID_BATTERY_REMAINING',
                    '5C': 'OIL_TEMP', '5D': 'FUEL_INJECT_TIMING', '5E': 'FUEL_RATE', '5F': 'EMISSION_REQ'
@@ -106,12 +111,6 @@ def ip4_addresses():
     except:
       outLog("Interface: "+interface+" issue")
   return ip_list
-
-def outLog(logLine):
-  if debugOn is True:
-    print(logLine)
-  else:
-    syslog.syslog(logLine)
 
 def uDisplay():
   if debugOn is not True:
@@ -148,7 +147,10 @@ def uDisplay():
         debugMsg = ""
       if networkStatus is True:
         lcdDisplayText(0, 0, "              ")
-        lcdDisplayText(0, 0, ip4_addresses()[0])
+        try:
+          lcdDisplayText(0, 0, ip4_addresses()[0])
+        except:
+          lcdDisplayText(0, 0, "NO IP")
       else:
         lcdDisplayText(0, 0, "Key:"+vehicleKey)
       lcdDisplayText(0, 8, "OBD:"+btStatus)
@@ -212,17 +214,12 @@ def pushInflux(influxQueue):
     influxQueueGet = influxQueue.get()
     # Attempt to push, loop over if no network connection
     try:
-      if debugOn is False:
-        outLog("Pushing to Influxdb")
-        req = urllib2.Request('http://www.auto-mated.com/api/influxPush.php?key='+vehicleKey)
-        req.add_header('Content-Type', 'application/json')
-        response = urllib2.urlopen(req, json.dumps(influxQueueGet))
-      else:
-	print(influxQueueGet)
-        outLog('Debug on.. not pushing to influxdb')
+      #outLog("Pushing to Influxdb")
+      headers = {'Content-type': 'application/json'}
+      req = requests.post('http://www.auto-mated.com/api/influxPush.php?key='+vehicleKey, data=json.dumps(influxQueueGet), headers=headers)
+      influxQueue.task_done()  # If success, skim that off the top of the queue
       influxStatus = True
       metricsSuccess += 1
-      influxQueue.task_done()  # If success, skim that off the top of the queue
     except:  # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
       influxQueue.put(influxQueueGet)
       influxQueue.task_done()  # Have to mark it as done anyway, but we roll it back into the Queue. 
@@ -320,29 +317,36 @@ def mainFunction():
   while True:
     if inAction is False:
       if debugOn is True:
-        portName = '/dev/pts/23'
-        connection = obd.OBD(portName)
+        portName = '/dev/pts/21'
+        connection = obd.Async(portName)
       else:
         while len(scanPort) == 0:
           outLog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
           scanPort = obd.scan_serial()
           time.sleep(5)
         portName = scanPort[0] 
-        connection = obd.OBD(portName)  # Auto connect to obd device
+        connection = obd.Async(portName)  # Auto connect to obd device
       time.sleep(2)
       outLog('Connected to '+portName+' successfully')
-      while engineStatus is False and inAction is False:
-        checkEngineOn = connection.query(obd.commands.RPM)
-        outLog('Engine RPM: '+str(checkEngineOn.value))
-        if checkEngineOn.is_null():  # Check if we have an RPM value.. if not return false
-          outLog('Engine is not running, checking again')
-          engineStatus = False
-          if not connection.is_connected():
-            break  # Break out of while and attempt to reconnect to the OBD port.. car is probably off! ( THIS MAY BE MAKING THE DISPLAY TURN ON AND OFF IN THE CAR)
+      
+      while engineStatus is False:
+        if inAction is False:
+          connection.watch(obd.commands.RPM)
+          connection.start()
           time.sleep(5)
-        else:
-          connection.close()
-          engineStatus = True
+          outLog('Watching RPM to see if engine is running')
+          checkEngineOn = connection.query(obd.commands.RPM)
+          outLog('Engine RPM: '+str(checkEngineOn.value))
+          if checkEngineOn.is_null():  # Check if we have an RPM value.. if not return false
+            outLog('Engine is not running, checking again')
+            engineStatus = False
+            if not connection.is_connected():
+              break  # Break out of while and attempt to reconnect to the OBD port.. car is probably off!
+            connection.unwatch_all()
+            time.sleep(5)
+          else:
+            dumpObd(connection, 1)
+            engineStatus = True
       if engineStatus is True:
         connection = obd.Async(portName)
         outLog('Engine is started. Kicking off metrics loop..')
@@ -356,7 +360,6 @@ def mainFunction():
               lines = f.readlines()
             for line in lines:
               outLog('Save data found importing...')
-              outLog(line)
               influxQueue.put(line)
             os.remove('/opt/influxback')  # Kill file after we've dumped them all in the backup. 
             outLog('Imported old metric data.')
@@ -369,7 +372,8 @@ def mainFunction():
           for metricName in metricsArray:
             value = connection.query(obd.commands[metricName])
             metricDic.update({'time': currentTime})
-            metricDic.update({metricName: value.value})
+            if value.value is not None:
+              metricDic.update({metricName: value.value})
           if metricDic.get('RPM') is None:  # Dump if RPM is none
             outLog("Engine has stopped. Dropping update")
             dumpObd(connection, 1)
@@ -390,8 +394,8 @@ def mainFunction():
             break  # break from FOR if engine is no longer running
           else: 
             engineStatus = True  # Stay in While
-          influxQueue.put(json.dumps(metricDic))  # Dump metrics to influx queue
-          time.sleep(1)
+          influxQueue.put(metricDic)  # Dump metrics to influx queue
+          time.sleep(5)
     else:
       if engineStatus is True:
         dumpObd(connection, 1)
