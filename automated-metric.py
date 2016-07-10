@@ -209,23 +209,24 @@ def callBack():
 
 def pushInflux(influxQueue):
   while True:
-    global influxStatus
-    global metricsSuccess
-    influxQueueGet = influxQueue.get()
-    # Attempt to push, loop over if no network connection
-    try:
-      #outLog("Pushing to Influxdb")
-      headers = {'Content-type': 'application/json'}
-      req = requests.post('http://www.auto-mated.com/api/influxPush.php?key='+vehicleKey, data=json.dumps(influxQueueGet), headers=headers)
-      influxQueue.task_done()  # If success, skim that off the top of the queue
-      influxStatus = True
-      metricsSuccess += 1
-    except:  # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
-      influxQueue.put(influxQueueGet)
-      influxQueue.task_done()  # Have to mark it as done anyway, but we roll it back into the Queue. 
-      outLog('Failed sending metric, Tossing record back into queue and trying again.')
-      influxStatus = False
-    time.sleep(0.25)
+    if networkStatus is True:
+      global influxStatus
+      global metricsSuccess
+      influxQueueGet = influxQueue.get()
+      # Attempt to push, loop over if no network connection
+      try:
+        #outLog("Pushing to Influxdb")
+        headers = {'Content-type': 'application/json'}
+        req = requests.post('http://www.auto-mated.com/api/influxPush.php?key='+vehicleKey, data=json.dumps(influxQueueGet), headers=headers)
+        influxQueue.task_done()  # If success, skim that off the top of the queue
+        influxStatus = True
+        metricsSuccess += 1
+      except:  # If we have no network connection. FIX: NEED TO HAVE THIS WRITE TO A FILE AND UPLOAD WHEN AVAILABLE
+        influxQueue.put(influxQueueGet)
+        influxQueue.task_done()  # Have to mark it as done anyway, but we roll it back into the Queue. 
+        outLog('Failed sending metric, Tossing record back into queue and trying again.')
+        influxStatus = False
+      time.sleep(0.25)
 
 def checkCodes(connection):
   outLog('Checking engine for error codes...')
@@ -272,7 +273,7 @@ def pushAction(action, portName):
 
 def getActions():
   while True:
-    if portName is not None:
+    if portName is not None and networkStatus is True:
       try:
         actionURL = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey
         actionOutput = urllib2.urlopen(actionURL).read()
@@ -281,16 +282,16 @@ def getActions():
           for actions in data:
             global inAction
             inAction = True
-            if actions['action'] == 'start' and engineStatus == False:
+            if actions['action'] == 'start' and engineStatus is False:
               outLog('Remote action found... Starting vehicle')
               returnOut = pushAction('69AA37901100', portName)
-            elif actions['action'] == 'stop' and engineStatus == True:
+            elif actions['action'] == 'stop' and engineStatus is True:
               outLog('Remote action found... Stopping vehicle')
               returnOut = pushAction('6AAA37901100', portName)
-            elif actions['action'] == 'unlock' and engineStatus == False:
+            elif actions['action'] == 'unlock' and engineStatus is False:
               outLog('Remote action found... Unlocking vehicle')
               returnOut = pushAction('24746C901100', portName)
-            elif actions['action'] == 'lock' and engineStatus == False:
+            elif actions['action'] == 'lock' and engineStatus is False:
               outLog('Remote action found... Locking vehicle')
               returnOut = pushAction('21746C901100', portName)
           while returnOut.find("OK") == -1:
@@ -383,7 +384,7 @@ def mainFunction():
                 metricDic.update({metric: 0})
             influxQueue.put(json.dumps(metricDic))
             engineStatus = False  # Kill while above
-            if influxQueue.qsize() > 0 and networkStatus == False:
+            if influxQueue.qsize() > 0 and networkStatus is False:
               outLog('Engine off and network down. Saving queue to file.')
               try:
                 backupFile = open('/opt/influxback', 'w')
