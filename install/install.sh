@@ -12,7 +12,48 @@ EOT
 sudo apt-get install tightvncserver -y
 tightvncserver
 service lightdm stop
-sed -i -e '$i \/usr/bin/vncserver :1 -geometry 800x600 -depth 24 -dpi 96 &\n' /etc/rc.local
+cat <<EOT >> /etc/init.d/vncboot
+#! /bin/sh
+# /etc/init.d/vncboot
+
+### BEGIN INIT INFO
+# Provides: vncboot
+# Required-Start: $remote_fs $syslog
+# Required-Stop: $remote_fs $syslog
+# Default-Start: 2 3 4 5
+# Default-Stop: 0 1 6
+# Short-Description: Start VNC Server at boot time
+# Description: Start VNC Server at boot time.
+### END INIT INFO
+
+USER=root
+HOME=/root
+
+export USER HOME
+
+case "\$1" in
+ start)
+  echo "Starting VNC Server"
+  #Insert your favoured settings for a VNC session
+  su - \$USER -c "/usr/bin/vncserver :1 -geometry 800x600 -depth 16"
+  ;;
+
+ stop)
+  echo "Stopping VNC Server"
+  /usr/bin/vncserver -kill :1
+  ;;
+
+ *)
+  echo "Usage: /etc/init.d/vncboot {start|stop}"
+  exit 1
+  ;;
+esac
+
+exit 0
+EOT
+chmod 755 /etc/init.d/vncboot
+update-rc.d -f lightdm remove
+update-rc.d vncboot defaults
 sed -i -e '$i \/opt/auto-mated/automated-metric.py &\n' /etc/rc.local
 { crontab -l -u root; echo '* * * * * /opt/auto-mated/bluetooth_search.sh'; } | crontab -u root -
 sudo apt-get install git-core -y
