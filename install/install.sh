@@ -18,7 +18,7 @@ git clone git://git.drogon.net/wiringPi
 cd wiringPi
 git pull origin
 ./build
-cd ../pcd8544/cpu_show/
+cd /opt/auto-mated/pcd8544/cpu_show/
 chmod +x compile.sh
 ./compile.sh
 pip install obd psutil netifaces
