@@ -7,7 +7,6 @@ Our intent is to bring those abilities to your vehicle; As well as track vehicle
 *  ObdLink LX (Hardware)
 *  Raspberry Pi b+/2
 *  python 2+
-*  pybluez - https://github.com/karulis/pybluez
 *  rfcomm
 *  python-dev
 *  libbluetooth-dev
@@ -15,4 +14,5 @@ Our intent is to bring those abilities to your vehicle; As well as track vehicle
 *  Bluetooth adapter (2.1+)
 
 # How-To
-TO BE UPDATED
+Install raspbian on a pie, in /opt clone this repo.
+cd to /opt/auto-mated/install and run ./install.sh
