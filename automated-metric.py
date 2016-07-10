@@ -265,6 +265,7 @@ def pushAction(action, portName):
     if c == b'\x00':
       continue
     buffer += c
+    time.sleep(0.25)
   raw = buffer.encode('ascii', 'ignore')
   return raw
   s.close()
@@ -308,7 +309,7 @@ def getActions():
           outLog('Something failed in actions... will try again in a bit')
       except:
         outLog('No actions to perform')
-      time.sleep(5)
+    time.sleep(5)
 
 def mainFunction():
   global engineStatus
