@@ -58,7 +58,7 @@ def outLog(logLine):
   if debugOn is True:
     print(logLine)
   else:
-    print(logLine)
+    syslog.syslog(logLine)
 
 # Checking if a config file exists, if it doesn't, then create one and fill it.
 configFile = '/etc/uhacknect.conf'
@@ -161,7 +161,7 @@ def uDisplay():
       lcdDisplayText(0, 40, "              ")
       lcdDisplayText(0, 40, "QT:"+str(queueSize)+ " "+str(metricsSuccess)+" "+debugMsg)
       lcdDisplay()
-      time.sleep(1)
+      time.sleep(0.25)
 
 # Kick off display thread
 displayThread = Thread(target=uDisplay)
@@ -248,6 +248,7 @@ def pushAction(action, portName):
   time.sleep(1)
   for writeData in ['STP31', 'ATSH1C0', action]:
     s.write(writeData+'\r\n')
+    time.sleep(1)
   s.flush()
   while True:
     c = s.read(1)
