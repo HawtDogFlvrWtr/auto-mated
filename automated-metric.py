@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # OBD2 Loop routine for metrics
 # Created by Christopher Phipps (hawtdogflvrwtr@gmail.com)
-# 5/1/2015
+# 7/12/2016
 #
 
 debugOn = False 
@@ -24,6 +24,7 @@ import random
 import json
 import serial
 import requests
+import cv2
 from datetime import datetime
 from netifaces import interfaces, ifaddresses, AF_INET
 
@@ -109,13 +110,13 @@ def ip4_addresses():
         if link['addr'] != '127.0.0.1':
           ip_list.append(link['addr'])
     except:
-      outLog("Interface: "+interface+" issue")
+      val = null
   return ip_list
 
 def uDisplay():
   if debugOn is not True:
     initDisplay()
-    lcdSetContrast(50)  # Universal contrast value for most lcd's
+    lcdSetContrast(60)  # Universal contrast value for most lcd's
     lcdShowLogo()
     time.sleep(2)
     while True:
@@ -205,7 +206,7 @@ def callBack():
     except:  # Woops, we have no network connection. 
       outLog('Unable to ping auto-mated.com as the network appears to be down. Trying again')
       networkStatus = False
-    time.sleep(10)
+    time.sleep(30)
 
 def pushInflux(influxQueue):
   while True:
@@ -241,64 +242,48 @@ def getVehicleInfo(connection):
   print vinNum
 
 def pushAction(action, portName):
-  attempts = 2
-  buffer = b''
-  s = serial.Serial(portName, baudrate=9600)
-  s.write('ATZ\r\n')
-  time.sleep(1)
-  for writeData in ['STP31', 'ATSH1C0', action]:
+  s = serial.Serial(port=portName, baudrate=115200, timeout=1)
+  s.flushInput()
+  for writeData in ['ATZ', 'ATE0', 'ATH1', 'ATL0', 'STP31', 'ATSH1C0', action]:
     s.write(writeData+'\r\n')
-    time.sleep(1)
-  s.flush()
-  while True:
-    c = s.read(1)
-    # if nothing was received
-    if not c:
-      if attempts <= 0:
-        outLog('never received prompt character')
-        break
-      outLog('found nothing')
-      attempts -= 1
-      continue
-    # end on chevron (ELM prompt character)
-    if c == b'>':
-      break
-    # skip null characters (ELM spec page 9)
-    if c == b'\x00':
-      continue
-    buffer += c
+    s.flush()
     time.sleep(0.25)
-  raw = buffer.encode('ascii', 'ignore')
-  return raw
+  raw = s.readline()
+  outLog("Output: "+raw)
   s.close()
+  if 'NO DATA' in raw:
+    return True
+  else:
+    return False
 
 def getActions():
   while True:
-    if portName is not None and networkStatus is True:
-      try:
-        actionURL = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey
-        actionOutput = urllib2.urlopen(actionURL).read()
-        data = json.loads(actionOutput)
-        try:  # Attempt to push, loop over if no network connection
-          for actions in data:
-            global inAction
-            inAction = True
-            if actions['action'] == 'start' and engineStatus is False:
-              outLog('Remote action found... Starting vehicle')
-              returnOut = pushAction('69AA37901100', portName)
-            elif actions['action'] == 'stop' and engineStatus is True:
-              outLog('Remote action found... Stopping vehicle')
-              returnOut = pushAction('6AAA37901100', portName)
-            elif actions['action'] == 'unlock' and engineStatus is False:
-              outLog('Remote action found... Unlocking vehicle')
-              returnOut = pushAction('24746C901100', portName)
-            elif actions['action'] == 'lock' and engineStatus is False:
-              outLog('Remote action found... Locking vehicle')
-              returnOut = pushAction('21746C901100', portName)
-          while returnOut.find("OK") == -1:
-            outLog("PUSH OUTPUT: "+returnOut)
-            if returnOut.find("OK") != -1:
-              outLog("PUSH OUTPUT: "+str(returnOut.find("OK")))
+    if portName is not None:
+      while networkStatus is True:
+        try:
+          actionURL = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey
+          actionOutput = urllib2.urlopen(actionURL).read()
+          data = json.loads(actionOutput)
+          try:  # Attempt to push, loop over if no network connection
+            for actions in data:
+              global inAction
+              inAction = True
+              time.sleep(2)
+              if actions['action'] == 'start' and engineStatus is False:
+                outLog('Remote action found... Starting vehicle')
+                returnOut = pushAction('69AA37901100', portName)
+              elif actions['action'] == 'stop' and engineStatus is True:
+                outLog('Remote action found... Stopping vehicle')
+                returnOut = pushAction('6AAA37901100', portName)
+              elif actions['action'] == 'unlock' and engineStatus is False:
+                outLog('Remote action found... Unlocking vehicle')
+                returnOut = pushAction('24746C901100', portName)
+              elif actions['action'] == 'lock' and engineStatus is False:
+                outLog('Remote action found... Locking vehicle')
+                returnOut = pushAction('21746C901100', portName)
+              else:
+                outLog('Cant perform action for one reason or another')
+            if returnOut is True:
               try:
                 actionCallbackUrl = "http://www.auto-mated.com/api/actionPull.php?key="+vehicleKey+"&id="+actions['id']
                 actionCallbackOutput = urllib2.urlopen(actionCallbackUrl).read()
@@ -306,17 +291,20 @@ def getActions():
                   outLog('Marked action as performed')
                   inAction = False 
               except:
-                outLog('Failed to submit completion of action.. trying again')
+                outLog('Failed to submit completion of action.. Network issue?')
+            else:
+              outLog('Action failed to perform. Trying again')
+          except:
+            outLog('Something failed in actions... will try again in a bit')
         except:
-          outLog('Something failed in actions... will try again in a bit')
-      except:
-        outLog('No actions to perform')
-    time.sleep(5)
+          outLog('No actions to perform')
+        time.sleep(20)
 
 def mainFunction():
   global engineStatus
   global portName
   scanPort = []
+  scanPort = obd.scan_serial()
   while True:
     if inAction is False:
       if debugOn is True:
@@ -326,10 +314,10 @@ def mainFunction():
         while len(scanPort) == 0:
           outLog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
           scanPort = obd.scan_serial()
-          time.sleep(5)
-        portName = scanPort[0] 
-        connection = obd.Async(portName)  # Auto connect to obd device
-      time.sleep(2)
+          time.sleep(2)
+        tempPortName = scanPort[0]
+        connection = obd.Async(tempPortName)  # Auto connect to obd device
+      portName = scanPort[0] 
       outLog('Connected to '+portName+' successfully')
       
       while engineStatus is False:
@@ -404,6 +392,37 @@ def mainFunction():
         dumpObd(connection, 1)
       outLog("Skipping metrics and engine check because an action is running")
       time.sleep(5)    
+
+def recordVideo():
+    while True:
+      if engineStatus is False:
+        try:
+          outLog("Attempting to start camera")
+          currentDate = datetime.strftime(datetime.now(), '%Y-%m-%d_%H:%M:%S')
+          capture = cv2.VideoCapture(0)
+          fourcc = cv2.cv.CV_FOURCC(*'XVID')  # cv2.VideoWriter_fourcc() does not exist
+          video_writer = cv2.VideoWriter("/opt/"+currentDate+".avi", fourcc, 20, (640, 480))
+          while engineStatus is False:
+            # record video
+            while (capture.isOpened()):
+              time.sleep(0.12)
+              ret, frame = capture.read()
+              if ret:
+                video_writer.write(frame)
+              else:
+                break
+          outLog("Engine stopped.. turning off camera")
+          if capture:
+            capture.release()
+            video_writer.release()
+        except:
+         outLog("No cameras appear to be connected")  
+      time.sleep(0.25)
+
+# Kick off callback thread
+cameraThread = Thread(target=recordVideo)
+cameraThread.setDaemon(True)
+cameraThread.start()
 
 # Kick off influx threads
 for i in range(num_threads):

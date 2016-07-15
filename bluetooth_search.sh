@@ -11,10 +11,10 @@ if [[ $process -gt 4 ]]; then
         logger Instance already running.. exiting... $process running
 	exit 0
 fi
-connectDevices=$(/usr/bin/bluez-test-device list | grep -c OBDLink)
+connectDevices=$(/usr/bin/bt-device --list | grep -c OBDLink)
 if [ $connectDevices != 1 ]; then
 	logger No OBDLink device connected... trying to find it and add it...
-	while [ $connectDevices != 1 ]; do
+	while [ $connectDevices < 1 ]; do
 		findDevice=$(hcitool scan | grep OBDLink | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
 		if [ "$findDevice" == "" ]; then
 			logger Nothing found.. sleeping and trying again 
@@ -22,15 +22,15 @@ if [ $connectDevices != 1 ]; then
 		else
 			logger Found OBDLink Device with Mac: "$findDevice".. Attempting to add and connect with rfcomm
 			# Connect to the device without interaction, via bt-device
-			yes 'yes' | /usr/bin/bluez-test-device trusted $findDevice yes
-			yes 'yes' | /usr/bin/bluez-test-device create $findDevice
-			connectDevices=$(/usr/bin/bluez-test-device list | grep -c OBDLink)
+			#yes 'yes' | /usr/bin/bt-device trusted $findDevice yes
+			#yes 'yes' | /usr/bin/bluez-test-device create $findDevice
+			connectDevices=$(/usr/bin/bt-device --list | grep -c OBDLink)
 			# Check if we successfully paired to the device without interaction
 			if [ $connectDevices != 0 ]; then
 				rfcomm connect /dev/rfcomm0 $findDevice 1 &
 				sleep 10
 				# Checking if we successfully connected via rfcomm
-				deviceMac=$(/usr/bin/bluez-test-device list | grep OBDLink | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
+				deviceMac=$(/usr/bin/bt-device --list | grep OBDLink | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
 				rfcommConfirm=$(rfcomm -a | grep -c $deviceMac)
 				if [ "$rfcommConfirm" != "" ]; then
 					logger Successfully connected via RFCOMM
@@ -46,7 +46,7 @@ if [ $connectDevices != 1 ]; then
 	done
 else
 	logger OBDLink device is already added... Checking if we\'re connected...
-	deviceMac=$(/usr/bin/bluez-test-device list | grep OBDLink | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
+	deviceMac=$(/usr/bin/bt-device --list | grep OBDLink | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}')
 	if [ "$deviceMac" != "" ]; then
 		rfcommConfirm=$(rfcomm -a | grep -c $deviceMac)
 	else
