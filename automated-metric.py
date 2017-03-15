@@ -28,8 +28,6 @@ import cv2
 from datetime import datetime
 from netifaces import interfaces, ifaddresses, AF_INET
 
-obd.debug.console = False 
-
  
 # Setup Influx Queue
 influxQueue = Queue(maxsize=0)
@@ -392,37 +390,6 @@ def mainFunction():
         dumpObd(connection, 1)
       outLog("Skipping metrics and engine check because an action is running")
       time.sleep(5)    
-
-def recordVideo():
-    while True:
-      if engineStatus is False:
-        try:
-          outLog("Attempting to start camera")
-          currentDate = datetime.strftime(datetime.now(), '%Y-%m-%d_%H:%M:%S')
-          capture = cv2.VideoCapture(0)
-          fourcc = cv2.cv.CV_FOURCC(*'XVID')  # cv2.VideoWriter_fourcc() does not exist
-          video_writer = cv2.VideoWriter("/opt/"+currentDate+".avi", fourcc, 20, (640, 480))
-          while engineStatus is False:
-            # record video
-            while (capture.isOpened()):
-              time.sleep(0.12)
-              ret, frame = capture.read()
-              if ret:
-                video_writer.write(frame)
-              else:
-                break
-          outLog("Engine stopped.. turning off camera")
-          if capture:
-            capture.release()
-            video_writer.release()
-        except:
-         outLog("No cameras appear to be connected")  
-      time.sleep(0.25)
-
-# Kick off callback thread
-cameraThread = Thread(target=recordVideo)
-cameraThread.setDaemon(True)
-cameraThread.start()
 
 # Kick off influx threads
 for i in range(num_threads):
