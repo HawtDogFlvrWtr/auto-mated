@@ -24,7 +24,6 @@ import random
 import json
 import serial
 import requests
-import cv2
 from datetime import datetime
 from netifaces import interfaces, ifaddresses, AF_INET
 
