@@ -10,12 +10,9 @@ from Queue import Queue
 from threading import Thread
 import obd
 import sys
-if debugOn is not True:
-  sys.path.append('/usr/local/lib/lcd')
-  from lcd import *
 import psutil
 import time
-import urllib2
+import urllib2, ssl
 import syslog
 import ConfigParser
 import os.path
@@ -27,7 +24,11 @@ import requests
 from datetime import datetime
 from netifaces import interfaces, ifaddresses, AF_INET
 
- 
+# Disable certificate checking
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
+
 # Setup Influx Queue
 influxQueue = Queue(maxsize=0)
 num_threads = 5 
@@ -197,7 +198,7 @@ def callBack():
       elmCallback = '1'
     global networkStatus
     try:
-      urllib2.urlopen("https://automated.wreckyour.net/api/callback.php?ping&key="+vehicleKey+"&enginestatus="+engineCallback+"&elmstatus="+elmCallback).read()
+      urllib2.urlopen("https://automated.wreckyour.net/api/callback.php?ping&key="+vehicleKey+"&enginestatus="+engineCallback+"&elmstatus="+elmCallback, context=ctx).read()
       outLog('Pinging wreckyour.net to let them know we are online')
       networkStatus = True
     except:  # Woops, we have no network connection. 
@@ -215,7 +216,7 @@ def pushInflux(influxQueue):
       try:
         #outLog("Pushing to Influxdb")
         headers = {'Content-type': 'application/json'}
-        req = requests.post('https://automated.wreckyour.net/api/influxPush.php?key='+vehicleKey, data=json.dumps(influxQueueGet), headers=headers)
+        req = requests.post('https://automated.wreckyour.net/api/influxPush.php?key='+vehicleKey, data=json.dumps(influxQueueGet), headers=headers, verify=False)
         influxQueue.task_done()  # If success, skim that off the top of the queue
         influxStatus = True
         metricsSuccess += 1
@@ -259,7 +260,7 @@ def getActions():
       while networkStatus is True:
         try:
           actionURL = "https://automated.wreckyour.net/api/actionPull.php?key="+vehicleKey
-          actionOutput = urllib2.urlopen(actionURL).read()
+          actionOutput = urllib2.urlopen(actionURL, context=ctx).read()
           data = json.loads(actionOutput)
           try:  # Attempt to push, loop over if no network connection
             for actions in data:
@@ -283,7 +284,7 @@ def getActions():
             if returnOut is True:
               try:
                 actionCallbackUrl = "https://automated.wreckyour.net/api/actionPull.php?key="+vehicleKey+"&id="+actions['id']
-                actionCallbackOutput = urllib2.urlopen(actionCallbackUrl).read()
+                actionCallbackOutput = urllib2.urlopen(actionCallbackUrl, context=ctx).read()
                 if actionCallbackOutput.find("OK") != -1:
                   outLog('Marked action as performed')
                   inAction = False 

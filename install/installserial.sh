@@ -9,7 +9,7 @@ cat <<EOT >> /etc/motd
         \/                                     \/     \/          \/     \/ 
 EOT
 
-sed -i -e '$i \/opt/auto-mated/automated-metric.py &\n' /etc/rc.local
+sed -i -e '$i \/opt/auto-mated/automated-metric-serial.py &\n' /etc/rc.local
 sudo apt-get install git-core -y
 sudo apt-get update -y
 sudo apt-get upgrade -y
