@@ -4,7 +4,7 @@
 # 7/12/2016
 #
 
-debugOn = True 
+debugOn = False
 
 from Queue import Queue
 from threading import Thread
@@ -24,6 +24,7 @@ import requests
 from datetime import datetime
 from netifaces import interfaces, ifaddresses, AF_INET
 
+#obd.logger.setLevel(obd.logging.DEBUG)
 # Disable certificate checking
 ctx = ssl.create_default_context()
 ctx.check_hostname = False
@@ -38,7 +39,7 @@ global engineStatus
 engineStatus = False
 
 global portName
-portName = None
+portName = '/dev/ttyAMA0'
 
 global networkStatus
 networkStatus = False
@@ -79,7 +80,7 @@ else:
         outLog("Failed writing config to "+configFile+".")
     cfgFile.close()
 
-acceptedMetrics = {'03': 'FUEL_STATUS', '04': 'ENGINE_LOAD', '05': 'COOLANT_TEMP', '06': 'SHORT_FUEL_TRIM_1',
+acceptedMetrics = {'04': 'ENGINE_LOAD', '05': 'COOLANT_TEMP', '06': 'SHORT_FUEL_TRIM_1',
                    '07': 'LONG_FUEL_TRIM_1', '08': 'SHORT_FUEL_TRIM_2', '09': 'LONG_FUEL_TRIM_2', '0A': 'FUEL_PRESSURE',
                    '0B': 'INTAKE_PRESSURE', '0C': 'RPM', '0D': 'SPEED', '0E': 'TIMING_ADVANCE', '0F': 'INTAKE_TEMP',
                    '10': 'MAF', '11': 'THROTTLE_POS', '12': 'AIR_STATUS', '13': 'O2_SENSORS', '14': 'O2_B1S1',
@@ -92,7 +93,7 @@ acceptedMetrics = {'03': 'FUEL_STATUS', '04': 'ENGINE_LOAD', '05': 'COOLANT_TEMP
                    '36': 'O2_S3_WR_CURRENT', '37': 'O2_S4_WR_CURRENT', '38': 'O2_S5_WR_CURRENT', '39': 'O2_S6_WR_CURRENT',
                    '3A': 'O2_S7_WR_CURRENT', '3B': 'O2_S8_WR_CURRENT', '3C': 'CATALYST_TEMP_B1S1', '3D': 'CATALYST_TEMP_B2S1',
                    '3E': 'CATALYST_TEMP_B1S2', '3F': 'CATALYST_TEMP_B2S2', '41': 'STATUS_DRIVE_CYCLE', '42': 'CONTROL_MODULE_VOLTAGE',
-                   '43': 'ABSOLUTE_LOAD', '44': 'COMMAND_EQUIV_RATIO', '45': 'RELATIVE_THROTTLE_POS', '46': 'AMBIANT_AIR_TEMP',
+                   '43': 'ABSOLUTE_LOAD', '45': 'RELATIVE_THROTTLE_POS', '46': 'AMBIANT_AIR_TEMP',
                    '4B': 'ACCELERATOR_POS_F', '4C': 'THROTTLE_ACTUATOR', '4D': 'RUN_TIME_MIL', '4E': 'TIME_SINCE_DTC_CLEARED',
                    '52': 'ETHANOL_PERCENT', '53': 'EVAP_VAPOR_PRESSURE_ABS', '54': 'EVAP_VAPOR_PRESSURE_ALT',
                    '55': 'SHORT_O2_TRIM_B1', '56': 'LONG_O2_TRIM_B1', '57': 'SHORT_O2_TRIM_B2', '58': 'LONG_O2_TRIM_B2',
@@ -110,62 +111,6 @@ def ip4_addresses():
     except:
       val = null
   return ip_list
-
-def uDisplay():
-  if debugOn is not True:
-    initDisplay()
-    lcdSetContrast(60)  # Universal contrast value for most lcd's
-    lcdShowLogo()
-    time.sleep(2)
-    while True:
-      cpuload = psutil.cpu_percent()
-      memused = psutil.virtual_memory()
-      rootused = psutil.disk_usage('/')
-      queueSize = influxQueue.qsize()
-      # Setting up network/metric stuff
-      if networkStatus is False:
-        network = "  Down"
-      else:
-        network = "    Up"
-      # Setting up Engine text
-      if engineStatus is False:
-        engineText = "   Down"
-      else:
-        engineText = "     Up"
-  
-      # Setting up BT Text
-      if portName is None:
-        btStatus = "      Down"
-      else:
-        btStatus = "        Up"
-
-      # Setup debug
-      if debugOn is True:
-        debugMsg = " DEBUG"
-      else:
-        debugMsg = ""
-      if networkStatus is True:
-        lcdDisplayText(0, 0, "              ")
-        try:
-          lcdDisplayText(0, 0, ip4_addresses()[0])
-        except:
-          lcdDisplayText(0, 0, "NO IP")
-      else:
-        lcdDisplayText(0, 0, "Key:"+vehicleKey)
-      lcdDisplayText(0, 8, "OBD:"+btStatus)
-      lcdDisplayText(0, 16, "ENGINE:"+engineText)
-      lcdDisplayText(0, 24, "NETWORK:"+network)
-      lcdDisplayText(0, 32, "              ")
-      lcdDisplayText(0, 32, "CM/:"+str(cpuload).split('.', 1)[0]+" "+str(memused.percent).split('.', 1)[0]+" "+str(rootused.percent).split('.', 1)[0]+"")
-      lcdDisplayText(0, 40, "              ")
-      lcdDisplayText(0, 40, "QT:"+str(queueSize)+ " "+str(metricsSuccess)+" "+debugMsg)
-      lcdDisplay()
-      time.sleep(0.25)
-
-# Kick off display thread
-displayThread = Thread(target=uDisplay)
-displayThread.setDaemon(True)
-displayThread.start()
 
 def obdWatch(connection, acceptedMetrics):
   metricsArray = []
@@ -214,7 +159,7 @@ def pushInflux(influxQueue):
       influxQueueGet = influxQueue.get()
       # Attempt to push, loop over if no network connection
       try:
-        #outLog("Pushing to Influxdb")
+        outLog("Pushing to Influxdb")
         headers = {'Content-type': 'application/json'}
         req = requests.post('https://automated.wreckyour.net/api/influxPush.php?key='+vehicleKey, data=json.dumps(influxQueueGet), headers=headers, verify=False)
         influxQueue.task_done()  # If success, skim that off the top of the queue
@@ -240,16 +185,16 @@ def getVehicleInfo(connection):
   print vinNum
 
 def pushAction(action, portName):
-  s = serial.Serial(port=portName, baudrate=115200, timeout=1)
+  s = serial.Serial(port=portName, timeout=1, baudrate=38400, bytesize=8, stopbits=1)
   s.flushInput()
-  for writeData in ['ATZ', 'ATE0', 'ATH1', 'ATL0', 'STP31', 'ATSH1C0', action]:
+  for writeData in ['ATZ', 'ATE0', 'ATH1', 'ATL0', 'ATTP6', 'STP31', 'ATSH1C0', action]:
     s.write(writeData+'\r\n')
     s.flush()
     time.sleep(0.25)
   raw = s.readline()
   outLog("Output: "+raw)
   s.close()
-  if 'NO DATA' in raw:
+  if 'CAN ERROR' not in raw:
     return True
   else:
     return False
@@ -262,6 +207,7 @@ def getActions():
           actionURL = "https://automated.wreckyour.net/api/actionPull.php?key="+vehicleKey
           actionOutput = urllib2.urlopen(actionURL, context=ctx).read()
           data = json.loads(actionOutput)
+          #var_dump(data)
           try:  # Attempt to push, loop over if no network connection
             for actions in data:
               global inAction
@@ -306,16 +252,18 @@ def mainFunction():
   while True:
     if inAction is False:
       if debugOn is True:
-        portName = '/dev/serial0'
-        connection = obd.Async(portName)
+        connection = obd.Async(portstr=portName, fast=False, baudrate=38400, protocol="6")
       else:
-        while len(scanPort) == 0:
-          outLog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
-          scanPort = obd.scan_serial()
-          time.sleep(2)
-        tempPortName = scanPort[0]
-        connection = obd.Async(tempPortName)  # Auto connect to obd device
-      portName = scanPort[0] 
+        #while len(scanPort) == 0:
+        #  outLog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
+        #  scanPort = obd.scan_serial()
+        #  time.sleep(2)
+        #tempPortName = scanPort[0]
+        connection = obd.Async(portstr=portName, fast=False, baudrate=38400, protocol="6")  # Auto connect to obd device
+      if debugOn is True:
+         portName = portName
+      else:
+         portName = portName 
       outLog('Connected to '+portName+' successfully')
       
       while engineStatus is False:
@@ -337,7 +285,7 @@ def mainFunction():
             dumpObd(connection, 1)
             engineStatus = True
       if engineStatus is True:
-        connection = obd.Async(portName)
+        connection = obd.Async(portstr=portName, fast=False, baudrate=38400, protocol="6")
         outLog('Engine is started. Kicking off metrics loop..')
         metricsArray = obdWatch(connection, acceptedMetrics)  # Watch all metrics
         connection.start()  # Start async calls now that we're watching PID's
@@ -359,10 +307,11 @@ def mainFunction():
           metricDic = {}
           currentTime = time.time()
           for metricName in metricsArray:
-            value = connection.query(obd.commands[metricName])
+            value = str(connection.query(obd.commands[metricName]))
+            value = value.split(' ')
             metricDic.update({'time': currentTime})
-            if value.value is not None:
-              metricDic.update({metricName: value.value})
+            if value[0] is not None:
+              metricDic.update({metricName: value[0]})
           if metricDic.get('RPM') is None:  # Dump if RPM is none
             outLog("Engine has stopped. Dropping update")
             dumpObd(connection, 1)
