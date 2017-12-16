@@ -39,7 +39,7 @@ global engineStatus
 engineStatus = False
 
 global portName
-portName = '/dev/ttyAMA0'
+portName = '/dev/ttyUSB0'
 
 global networkStatus
 networkStatus = False
@@ -185,7 +185,7 @@ def getVehicleInfo(connection):
   print vinNum
 
 def pushAction(action, portName):
-  s = serial.Serial(port=portName, timeout=1, baudrate=38400, bytesize=8, stopbits=1)
+  s = serial.Serial(port=portName, timeout=1, baudrate=115200, bytesize=8, stopbits=1)
   s.flushInput()
   for writeData in ['ATZ', 'ATE0', 'ATH1', 'ATL0', 'ATTP6', 'STP31', 'ATSH1C0', action]:
     s.write(writeData+'\r\n')
@@ -252,14 +252,14 @@ def mainFunction():
   while True:
     if inAction is False:
       if debugOn is True:
-        connection = obd.Async(portstr=portName, fast=False, baudrate=38400, protocol="6")
+        connection = obd.Async(portstr=portName, fast=False, baudrate=115200, protocol="6")
       else:
         #while len(scanPort) == 0:
         #  outLog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
         #  scanPort = obd.scan_serial()
         #  time.sleep(2)
         #tempPortName = scanPort[0]
-        connection = obd.Async(portstr=portName, fast=False, baudrate=38400, protocol="6")  # Auto connect to obd device
+        connection = obd.Async(portstr=portName, fast=False, baudrate=115200, protocol="6")  # Auto connect to obd device
       if debugOn is True:
          portName = portName
       else:
@@ -285,7 +285,7 @@ def mainFunction():
             dumpObd(connection, 1)
             engineStatus = True
       if engineStatus is True:
-        connection = obd.Async(portstr=portName, fast=False, baudrate=38400, protocol="6")
+        connection = obd.Async(portstr=portName, fast=False, baudrate=115200, protocol="6")
         outLog('Engine is started. Kicking off metrics loop..')
         metricsArray = obdWatch(connection, acceptedMetrics)  # Watch all metrics
         connection.start()  # Start async calls now that we're watching PID's
