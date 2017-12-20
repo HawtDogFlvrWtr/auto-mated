@@ -187,16 +187,16 @@ def getVehicleInfo(connection):
   print vinNum
 
 def pushAction(action, portName):
-  s = serial.Serial(port=portName, timeout=1, baudrate=115200, bytesize=8, stopbits=1)
+  s = serial.Serial(port=portName, timeout=1, baudrate=115200) 
   s.flushInput()
   for writeData in ['ATZ', 'ATE0', 'ATH1', 'ATL0', 'ATTP6', 'STP31', 'ATSH1C0', action]:
     s.write(writeData+'\r\n')
-    s.flush()
-    time.sleep(0.25)
+    #s.flush()
+    time.sleep(0.30)
   raw = s.readline()
   outLog("Output: "+raw)
   s.close()
-  if 'CAN ERROR' not in raw:
+  if 'DATA' in raw:
     return True
   else:
     return False
