@@ -4,7 +4,7 @@
 # 7/12/2016
 #
 
-debugOn = False
+debugOn = True
 
 from Queue import Queue
 from threading import Thread
@@ -128,7 +128,9 @@ def obdWatch(connection, acceptedMetrics):
 def dumpObd(connection, sleepTime):
   connection.stop()
   connection.unwatch_all()
+  connection.close()
   time.sleep(sleepTime)
+
 
 def callBack():
   while True:
@@ -251,38 +253,35 @@ def mainFunction():
   scanPort = obd.scan_serial()
   while True:
     if inAction is False:
-      if debugOn is True:
-        connection = obd.Async(portstr=portName, fast=False, baudrate=115200, protocol="6")
+      connection = obd.Async(portstr=portName, fast=False, baudrate=115200, protocol="6")
+      if obd.OBDStatus.CAR_CONNECTED == "Car Connected":
+        dumpObd(connection, 1) 
+        portName = portName
+        outLog('Connected to '+portName+' successfully')
+      elif obd.OBDStatus.CAR_CONNECTED != "Car Connected":
+          outLog("Not connected to car yet")
+          time.sleep(30)
+      elif obd.OBDStatus.ELM_CONNECTED == "ELM Connected":
+          outLog("Connected to ELM but not vehicle")
+          time.sleep(30)
       else:
-        #while len(scanPort) == 0:
-        #  outLog('No valid device found. Please ensure ELM327 is connected and on. Looping with 5 seconds pause')
-        #  scanPort = obd.scan_serial()
-        #  time.sleep(2)
-        #tempPortName = scanPort[0]
-        connection = obd.Async(portstr=portName, fast=False, baudrate=115200, protocol="6")  # Auto connect to obd device
-      if debugOn is True:
-         portName = portName
-      else:
-         portName = portName 
-      outLog('Connected to '+portName+' successfully')
+          outLog("Not connected to ELM or Car")
+          time.sleep(30)
       
       while engineStatus is False:
         if inAction is False:
-          connection.watch(obd.commands.RPM)
-          connection.start()
-          time.sleep(5)
-          outLog('Watching RPM to see if engine is running')
+          connection = obd.OBD(portstr=portName, fast=False, baudrate=115200, protocol="6")
+          time.sleep(2)
+          outLog('Checking RPM to see if engine is running')
           checkEngineOn = connection.query(obd.commands.RPM)
           outLog('Engine RPM: '+str(checkEngineOn.value))
           if checkEngineOn.is_null():  # Check if we have an RPM value.. if not return false
-            outLog('Engine is not running, checking again')
+            outLog('Engine is not running, checking again in 2 minutes') # HAVE TO CHECK SO LONG BECAUSE IT TURNS ON THE CAR LIGHTS BRIEFLY
             engineStatus = False
-            if not connection.is_connected():
-              break  # Break out of while and attempt to reconnect to the OBD port.. car is probably off!
-            connection.unwatch_all()
-            time.sleep(5)
+            connection.close()
+            time.sleep(120)
           else:
-            dumpObd(connection, 1)
+            connection.close()
             engineStatus = True
       if engineStatus is True:
         connection = obd.Async(portstr=portName, fast=False, baudrate=115200, protocol="6")
@@ -312,7 +311,8 @@ def mainFunction():
             metricDic.update({'time': currentTime})
             if value[0] is not None:
               metricDic.update({metricName: value[0]})
-          if metricDic.get('RPM') is None:  # Dump if RPM is none
+          print connection.query(obd.commands['RPM'])
+          if connection.query(obd.commands['RPM']).is_null():  # Dump if RPM is none
             outLog("Engine has stopped. Dropping update")
             dumpObd(connection, 1)
             for metric in metricDic:

@@ -15,4 +15,5 @@ sudo apt-get update -y
 sudo apt-get upgrade -y
 apt-get install --no-install-recommends htop python-dev python-pip -y
 cd /opt
-pip install setuptools wheel obd psutil netifaces
+pip install setuptools wheel
+pip install obd psutil netifaces
