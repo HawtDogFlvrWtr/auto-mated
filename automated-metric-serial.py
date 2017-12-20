@@ -4,7 +4,7 @@
 # 7/12/2016
 #
 
-debugOn = True
+debugOn = False
 
 from Queue import Queue
 from threading import Thread
